@@ -1,5 +1,7 @@
 #include "message.h"
 
+namespace broadcast {
+
 namespace message {
 
 void Set(Message message, byte id, const byte* payload, bool reply) {
@@ -29,3 +31,5 @@ bool IsReply(const Message message) {
 }
 
 }  // namespace message
+
+}  // namespace broadcast

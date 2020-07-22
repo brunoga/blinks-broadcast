@@ -24,6 +24,8 @@
 // Message id 255 is reserved to indicate an invalid message.
 #define MESSAGE_INVALID 255
 
+namespace broadcast {
+
 namespace message {
 
 // Message is just an array of bytes.
@@ -43,5 +45,7 @@ byte* MutablePayload(Message message);
 bool IsReply(const Message message);
 
 }  // namespace message
+
+}  // namespace broadcast
 
 #endif  // MESSAGE_H_
