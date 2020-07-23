@@ -162,11 +162,13 @@ bool Send(const broadcast::message::Message message) {
   return true;
 }
 
-bool Receive(broadcast::message::Message result) {
+bool Receive(broadcast::message::Message reply) {
   if (!has_result_) return false;
 
-  message::Set(result, message::ID(result_), message::Payload(result_),
-               message::IsReply(result_));
+  if (reply != nullptr) {
+    message::Set(reply, message::ID(result_), message::Payload(result_),
+                 message::IsReply(result_));
+  }
 
   has_result_ = false;
 
