@@ -37,11 +37,6 @@ static bool readDatagram(byte f, byte* datagram) {
 }
 
 static bool processReply(byte f, const message::Message reply) {
-  if (!support::IsBitSet(sent_faces_, f)) {
-    LOGF("reply from unexpected face ");
-    LOGLN(f);
-  }
-
   if (rcv_reply_handler_) {
     rcv_reply_handler_(message::ID(reply), message::Payload(reply));
   }
@@ -55,9 +50,6 @@ static bool processReply(byte f, const message::Message reply) {
 
 static bool processMessage(byte f, message::Message message) {
   if (support::IsBitSet(sent_faces_, f)) {
-    LOGF("loop on face ");
-    LOGLN(f);
-
     // We already forwarded the message to this face. Ignore it and stop
     // waiting for a reply on it.
     support::UnsetBit(&sent_faces_, f);
@@ -77,9 +69,6 @@ static bool processMessage(byte f, message::Message message) {
 }
 
 static void sendReply(message::Message reply) {
-  LOGF("sending reply to ");
-  LOGLN(parent_face_);
-
   if (fwd_reply_handler_) {
     fwd_reply_handler_(message::ID(reply), message::MutablePayload(reply));
   }
@@ -94,9 +83,6 @@ static void sendMessage(const message::Message message) {
     if (isValueReceivedOnFaceExpired(f)) continue;
 
     if (f == parent_face_) continue;
-
-    LOGF("sending message to ");
-    LOGLN(f);
 
     message::Message fwd_message;
     message::Set(fwd_message, message::ID(message), message::Payload(message),
@@ -138,13 +124,8 @@ void Process() {
     message::Set(message, datagram[0], &datagram[MESSAGE_HEADER_BYTES], false);
 
     if (message::IsReply(message)) {
-      LOGF("received reply from ");
-      LOGLN(f);
-
       if (processReply(f, message)) {
         if (parent_face_ == FACE_COUNT) {
-          LOGFLN("Materializing result");
-
           if (fwd_reply_handler_) {
             fwd_reply_handler_(message::ID(message),
                                message::MutablePayload(message));
@@ -159,9 +140,6 @@ void Process() {
         sendReply(message);
       }
     } else {
-      LOGF("received message from ");
-      LOGLN(f);
-
       if (processMessage(f, message)) {
         sendMessage(message);
       }
