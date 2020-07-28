@@ -31,8 +31,11 @@ namespace message {
 // Message is just an array of bytes.
 typedef byte Message[MESSAGE_DATA_BYTES];
 
-// Sets the message with the given parameters.
-void Set(Message message, byte id, const byte* payload, bool reply);
+// Sets the message with the given parameters. If fire_and_forget is true,
+// there will be no reply generated to this message, eliminating the roundtrip
+// time.
+void Set(Message message, byte id, const byte* payload, bool is_reply,
+         bool fire_and_forget = false);
 
 // Returns the message ID.
 byte ID(const Message message);
@@ -43,6 +46,9 @@ byte* MutablePayload(Message message);
 
 // True if message is a reply message.
 bool IsReply(const Message message);
+
+// True if message is fire-and-forget (no reply will be generated).
+bool IsFireAndForget(const Message message);
 
 }  // namespace message
 
