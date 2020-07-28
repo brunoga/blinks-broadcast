@@ -2,8 +2,11 @@
 
 #include "bits.h"
 
-#define MESSAGE_BIT_REPLY 7
-#define MESSAGE_BIT_FIRE_AND_FORGET 6
+#define MESSAGE_HEADER_ID_BYTE 0
+#define MESSAGE_HEADER_SEQUENCE_BYTE 1
+
+#define MESSAGE_HEADER_ID_BIT_REPLY 7
+#define MESSAGE_HEADER_ID_BIT_FIRE_AND_FORGET 6
 
 namespace broadcast {
 
@@ -12,14 +15,15 @@ namespace message {
 void Set(Message message, byte id, const byte* payload, bool is_reply,
          bool fire_and_forget) {
   if (is_reply) {
-    support::SetBit(&id, MESSAGE_BIT_REPLY);
+    support::SetBit(&id, MESSAGE_HEADER_ID_BIT_REPLY);
   }
 
   if (fire_and_forget) {
-    support::SetBit(&id, MESSAGE_BIT_FIRE_AND_FORGET);
+    support::SetBit(&id, MESSAGE_HEADER_ID_BIT_FIRE_AND_FORGET);
   }
 
-  message[0] = id;
+  message[MESSAGE_HEADER_ID_BYTE] = id;
+  message[MESSAGE_HEADER_SEQUENCE_BYTE] = random(255);
 
   // Initialize with either the payload given or zeroes if the payload is
   // nullptr.
@@ -29,13 +33,17 @@ void Set(Message message, byte id, const byte* payload, bool is_reply,
 }
 
 byte ID(const Message message) {
-  byte id = message[0];
+  byte id = message[MESSAGE_HEADER_ID_BYTE];
 
   // Clear reserved bits.
-  support::UnsetBit(&id, MESSAGE_BIT_REPLY);
-  support::UnsetBit(&id, MESSAGE_BIT_FIRE_AND_FORGET);
+  support::UnsetBit(&id, MESSAGE_HEADER_ID_BIT_REPLY);
+  support::UnsetBit(&id, MESSAGE_HEADER_ID_BIT_FIRE_AND_FORGET);
 
   return id;
+}
+
+byte Sequence(const Message message) {
+  return message[MESSAGE_HEADER_SEQUENCE_BYTE];
 }
 
 const byte* Payload(const Message message) {
@@ -46,12 +54,14 @@ byte* MutablePayload(Message message) { return &message[MESSAGE_HEADER_BYTES]; }
 
 bool IsReply(const Message message) {
   // Check if the reply bit is set.
-  return support::IsBitSet(message[0], MESSAGE_BIT_REPLY);
+  return support::IsBitSet(message[MESSAGE_HEADER_ID_BYTE],
+                           MESSAGE_HEADER_ID_BIT_REPLY);
 }
 
 bool IsFireAndForget(const Message message) {
   // Check if the fire-and-forget bit is set.
-  return support::IsBitSet(message[0], MESSAGE_BIT_FIRE_AND_FORGET);
+  return support::IsBitSet(message[MESSAGE_HEADER_ID_BYTE],
+                           MESSAGE_HEADER_ID_BIT_FIRE_AND_FORGET);
 }
 
 }  // namespace message

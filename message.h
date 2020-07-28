@@ -12,7 +12,7 @@
 #endif
 
 // This should not be changed unless you need a different header size.
-#define MESSAGE_HEADER_BYTES 1
+#define MESSAGE_HEADER_BYTES 2
 
 #define MESSAGE_DATA_BYTES MESSAGE_PAYLOAD_BYTES + MESSAGE_HEADER_BYTES
 
