@@ -114,7 +114,10 @@ static void sendMessage(const message::Message message) {
     parent_face_ = FACE_COUNT;
   }
 
-  // Record last sequence we saw.
+  // Record last sequence we sent.
+  //
+  // TODO(bga): Currently this is only used for fire-and-forget messages.
+  // Consider using it for normal ones too.
   last_sequence_ = message::Sequence(message);
 }
 
