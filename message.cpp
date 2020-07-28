@@ -1,5 +1,7 @@
 #include "message.h"
 
+#include <string.h>  // For memcpy.
+
 #include "bits.h"
 
 #define MESSAGE_HEADER_ID_BYTE 0
@@ -12,8 +14,8 @@ namespace broadcast {
 
 namespace message {
 
-void Set(Message message, byte id, const byte* payload, bool is_reply,
-         bool fire_and_forget) {
+void Set(Message message, byte id, byte sequence, const byte* payload,
+         bool is_reply, bool fire_and_forget) {
   if (is_reply) {
     support::SetBit(&id, MESSAGE_HEADER_ID_BIT_REPLY);
   }
@@ -23,13 +25,18 @@ void Set(Message message, byte id, const byte* payload, bool is_reply,
   }
 
   message[MESSAGE_HEADER_ID_BYTE] = id;
-  message[MESSAGE_HEADER_SEQUENCE_BYTE] = random(254) + 1;
+  message[MESSAGE_HEADER_SEQUENCE_BYTE] =
+      id == 0 ? 0 : (sequence == 0 ? random(254) + 1 : sequence);
 
   // Initialize with either the payload given or zeroes if the payload is
   // nullptr.
   for (byte i = 0; i < MESSAGE_PAYLOAD_BYTES; ++i) {
     message[MESSAGE_HEADER_BYTES + i] = (payload == nullptr ? 0 : payload[i]);
   }
+}
+
+void Set(Message message, const byte* data) {
+  memcpy(message, data, MESSAGE_DATA_BYTES);
 }
 
 byte ID(const Message message) {

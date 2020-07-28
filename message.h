@@ -22,7 +22,7 @@
 #endif
 
 // Message id 255 is reserved to indicate an invalid message.
-#define MESSAGE_INVALID 255
+#define MESSAGE_INVALID 0
 
 namespace broadcast {
 
@@ -34,8 +34,11 @@ typedef byte Message[MESSAGE_DATA_BYTES];
 // Sets the message with the given parameters. If fire_and_forget is true,
 // there will be no reply generated to this message, eliminating the roundtrip
 // time.
-void Set(Message message, byte id, const byte* payload, bool is_reply,
-         bool fire_and_forget = false);
+void Set(Message message, byte id, byte sequence, const byte* payload,
+         bool is_reply, bool fire_and_forget = false);
+
+// Sets the message with the given data buffer.
+void Set(Message message, const byte* data);
 
 // Returns the message ID.
 byte ID(const Message message);
