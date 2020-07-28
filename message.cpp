@@ -23,7 +23,7 @@ void Set(Message message, byte id, const byte* payload, bool is_reply,
   }
 
   message[MESSAGE_HEADER_ID_BYTE] = id;
-  message[MESSAGE_HEADER_SEQUENCE_BYTE] = random(255);
+  message[MESSAGE_HEADER_SEQUENCE_BYTE] = random(254) + 1;
 
   // Initialize with either the payload given or zeroes if the payload is
   // nullptr.
