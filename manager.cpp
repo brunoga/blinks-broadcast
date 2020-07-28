@@ -94,8 +94,9 @@ static void sendMessage(const message::Message message) {
     if (f == parent_face_) continue;
 
     message::Message fwd_message;
-    message::Set(fwd_message, message::ID(message), message::Payload(message),
-                 false);
+    message::Set(fwd_message, message::ID(message), message::Sequence(message),
+                 message::Payload(message), false,
+                 message::IsFireAndForget(message));
 
     if (fwd_message_handler_) {
       fwd_message_handler_(message::ID(fwd_message), parent_face_, f,
@@ -126,7 +127,7 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
   rcv_reply_handler_ = rcv_reply_handler;
   fwd_reply_handler_ = fwd_reply_handler;
 
-  message::Set(result_, MESSAGE_INVALID, nullptr, false);
+  message::Set(result_, MESSAGE_INVALID, 0, nullptr, false);
 }
 
 void Process() {
@@ -135,11 +136,11 @@ void Process() {
     if (!readDatagram(f, datagram)) continue;
 
     has_result_ = false;
-    message::Set(result_, MESSAGE_INVALID, nullptr, false);
+    message::Set(result_, MESSAGE_INVALID, 0, nullptr, false);
 
     // Got what appears to be a valid message. Parse it.
     broadcast::message::Message message;
-    message::Set(message, datagram[0], &datagram[MESSAGE_HEADER_BYTES], false);
+    message::Set(message, datagram);
 
     if (message::IsReply(message)) {
       if (processReply(f, message)) {
@@ -150,7 +151,8 @@ void Process() {
           }
 
           has_result_ = true;
-          message::Set(result_, message::ID(message), message::Payload(message),
+          message::Set(result_, message::ID(message),
+                       message::Sequence(message), message::Payload(message),
                        true);
           continue;
         }
@@ -169,8 +171,8 @@ void Process() {
       if (sent_faces_ != 0) continue;
 
       message::Message reply;
-      message::Set(reply, message::ID(message), message::Payload(message),
-                   true);
+      message::Set(reply, message::ID(message), message::Sequence(message),
+                   message::Payload(message), true);
 
       sendReply(reply);
     }
@@ -189,8 +191,8 @@ bool Receive(broadcast::message::Message reply) {
   if (!has_result_) return false;
 
   if (reply != nullptr) {
-    message::Set(reply, message::ID(result_), message::Payload(result_),
-                 message::IsReply(result_));
+    message::Set(reply, message::ID(result_), message::Sequence(result_),
+                 message::Payload(result_), message::IsReply(result_));
   }
 
   has_result_ = false;
