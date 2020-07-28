@@ -20,6 +20,8 @@ static byte sent_faces_ = 0;
 static bool has_result_ = false;
 static message::Message result_;
 
+static byte last_sequence_ = 0;
+
 static bool readDatagram(byte f, byte* datagram) {
   if (!isDatagramReadyOnFace(f)) return false;
 
@@ -49,12 +51,19 @@ static bool processReply(byte f, const message::Message reply) {
 }
 
 static bool processMessage(byte f, message::Message message) {
-  if (support::IsBitSet(sent_faces_, f)) {
-    // We already forwarded the message to this face. Ignore it and stop
-    // waiting for a reply on it.
-    support::UnsetBit(&sent_faces_, f);
+  if (message::IsFireAndForget(message)) {
+    if (message::Sequence(message) == last_sequence_) {
+      // This is a fire-and-forget message loop.
+      return false;
+    }
+  } else {
+    if (support::IsBitSet(sent_faces_, f)) {
+      // We already forwarded the message to this face. Ignore it and stop
+      // waiting for a reply on it.
+      support::UnsetBit(&sent_faces_, f);
 
-    return false;
+      return false;
+    }
   }
 
   // We received a new message. Set our parent and forward the message.
@@ -97,6 +106,15 @@ static void sendMessage(const message::Message message) {
 
     support::SetBit(&sent_faces_, f);
   }
+
+  if (message::IsFireAndForget(message)) {
+    // Fire and forget. Clear sent faces and parent.
+    sent_faces_ = 0;
+    parent_face_ = FACE_COUNT;
+  }
+
+  // Record last sequence we saw.
+  last_sequence_ = message::Sequence(message);
 }
 
 void Setup(ReceiveMessageHandler rcv_message_handler,
@@ -142,6 +160,10 @@ void Process() {
     } else {
       if (processMessage(f, message)) {
         sendMessage(message);
+      }
+
+      if (message::IsFireAndForget(message)) {
+        continue;
       }
 
       if (sent_faces_ != 0) continue;
