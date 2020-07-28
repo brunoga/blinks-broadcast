@@ -40,6 +40,9 @@ void Set(Message message, byte id, const byte* payload, bool is_reply,
 // Returns the message ID.
 byte ID(const Message message);
 
+// Returns the message sequence number.
+byte Sequence(const Message message);
+
 // Immutable and mutable accessors to the message payload.
 const byte* Payload(const Message message);
 byte* MutablePayload(Message message);
