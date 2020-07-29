@@ -22,20 +22,15 @@ static message::Message result_;
 
 static byte last_sequence_ = 0;
 
-static bool readDatagram(byte f, byte* datagram) {
-  if (!isDatagramReadyOnFace(f)) return false;
+static const byte* readDatagram(byte f) {
+  byte len = getDatagramLengthOnFace(f);
 
-  if (getDatagramLengthOnFace(f) != MESSAGE_DATA_BYTES) {
-    markDatagramReadOnFace(f);
-    return false;
-  }
-
-  const byte* data = getDatagramOnFace(f);
-  memcpy(datagram, data, MESSAGE_DATA_BYTES);
-
+  // This is ok as it only sets length to zero. The data is still there.
   markDatagramReadOnFace(f);
 
-  return true;
+  if (len != MESSAGE_DATA_BYTES) return nullptr;
+
+  return getDatagramOnFace(f);
 }
 
 static bool processReply(byte f, const message::Message reply) {
@@ -45,9 +40,7 @@ static bool processReply(byte f, const message::Message reply) {
 
   support::UnsetBit(&sent_faces_, f);
 
-  if (sent_faces_ != 0) return false;
-
-  return true;
+  return (sent_faces_ == 0);
 }
 
 static bool processMessage(byte f, message::Message message) {
@@ -134,15 +127,14 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
 }
 
 void Process() {
-  byte datagram[MESSAGE_DATA_BYTES];
   FOREACH_FACE(f) {
-    if (!readDatagram(f, datagram)) continue;
+    const byte* datagram = readDatagram(f);
 
-    has_result_ = false;
-    message::Set(result_, MESSAGE_INVALID, 0, nullptr, false);
+    // Is a datagram ready on this face?
+    if (datagram == nullptr) continue;
 
     // Got what appears to be a valid message. Parse it.
-    broadcast::message::Message message;
+    message::Message message;
     message::Set(message, datagram);
 
     if (message::IsReply(message)) {
@@ -171,8 +163,10 @@ void Process() {
         continue;
       }
 
+      // Are we still waiting for replies on any faces?
       if (sent_faces_ != 0) continue;
 
+      // Nope, so we are a leaf node and should reply to the message.
       message::Message reply;
       message::Set(reply, message::ID(message), message::Sequence(message),
                    message::Payload(message), true);

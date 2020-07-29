@@ -17,6 +17,8 @@ void rcv_message_handler(byte message_id, byte* payload) {
 
     LOGF("Number of blinks (reported): ");
     LOGLN(payload[0]);
+
+    return;
   }
 
   // We do not need to do anything. Just change our color to
