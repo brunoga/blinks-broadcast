@@ -98,7 +98,7 @@ static void sendMessage(const message::Message message) {
 
     sendDatagramOnFace(fwd_message, MESSAGE_DATA_BYTES, f);
 
-    UNSET_BIT(sent_faces_, f);
+    SET_BIT(sent_faces_, f);
   }
 
   if (message::IsFireAndForget(message)) {
