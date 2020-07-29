@@ -38,7 +38,7 @@ static bool processReply(byte f, const message::Message reply) {
     rcv_reply_handler_(message::ID(reply), message::Payload(reply));
   }
 
-  support::UnsetBit(&sent_faces_, f);
+  UNSET_BIT(sent_faces_, f);
 
   return (sent_faces_ == 0);
 }
@@ -50,10 +50,10 @@ static bool processMessage(byte f, message::Message message) {
       return false;
     }
   } else {
-    if (support::IsBitSet(sent_faces_, f)) {
+    if (IS_BIT_SET(sent_faces_, f)) {
       // We already forwarded the message to this face. Ignore it and stop
       // waiting for a reply on it.
-      support::UnsetBit(&sent_faces_, f);
+      UNSET_BIT(sent_faces_, f);
 
       return false;
     }
@@ -98,7 +98,7 @@ static void sendMessage(const message::Message message) {
 
     sendDatagramOnFace(fwd_message, MESSAGE_DATA_BYTES, f);
 
-    support::SetBit(&sent_faces_, f);
+    UNSET_BIT(sent_faces_, f);
   }
 
   if (message::IsFireAndForget(message)) {
