@@ -38,7 +38,7 @@ void rcv_reply_handler(byte message_id, const byte* payload) {
     sum += payload[0];
   }
 
-  displayColor = BLUE;
+  displayColor = CYAN;
 }
 
 void fwd_reply_handler(byte message_id, byte* payload) {
