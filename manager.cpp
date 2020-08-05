@@ -1,8 +1,10 @@
 #include "manager.h"
 
+#include <shared/blinkbios_shared_functions.h>
 #include <string.h>
 
 #include "bits.h"
+#include "datagram3.h"
 #include "debug.h"
 
 namespace broadcast {
@@ -21,17 +23,6 @@ static bool has_result_ = false;
 static message::Message result_;
 
 static byte last_sequence_ = 0;
-
-static const byte* readDatagram(byte f) {
-  byte len = getDatagramLengthOnFace(f);
-
-  // This is ok as it only sets length to zero. The data is still there.
-  markDatagramReadOnFace(f);
-
-  if (len != MESSAGE_DATA_BYTES) return nullptr;
-
-  return getDatagramOnFace(f);
-}
 
 static bool processReply(byte f, const message::Message reply) {
   if (rcv_reply_handler_) {
@@ -75,7 +66,9 @@ static void sendReply(message::Message reply) {
     fwd_reply_handler_(message::ID(reply), message::MutablePayload(reply));
   }
 
-  sendDatagramOnFace(reply, MESSAGE_DATA_BYTES, parent_face_);
+  if (!datagram3::Send(parent_face_, reply, MESSAGE_DATA_BYTES)) {
+    BLINKBIOS_ABEND_VECTOR(parent_face_);
+  }
 
   parent_face_ = FACE_COUNT;
 }
@@ -96,7 +89,9 @@ static void sendMessage(const message::Message message) {
                            message::MutablePayload(fwd_message));
     };
 
-    sendDatagramOnFace(fwd_message, MESSAGE_DATA_BYTES, f);
+    if (!datagram3::Send(f, fwd_message, MESSAGE_DATA_BYTES)) {
+      BLINKBIOS_ABEND_VECTOR(f);
+    }
 
     SET_BIT(sent_faces_, f);
   }
@@ -127,11 +122,12 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
 }
 
 void Process() {
-  FOREACH_FACE(f) {
-    const byte* datagram = readDatagram(f);
+  datagram3::Process();
 
-    // Is a datagram ready on this face?
-    if (datagram == nullptr) continue;
+  byte datagram[MESSAGE_DATA_BYTES];
+  FOREACH_FACE(f) {
+    byte datagram_len = MESSAGE_DATA_BYTES;
+    if (!datagram3::Receive(f, datagram, &datagram_len)) continue;
 
     // Got what appears to be a valid message. Parse it.
     message::Message message;
