@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "bits.h"
-#include "datagram3.h"
 #include "debug.h"
 
 namespace broadcast {
@@ -66,8 +65,8 @@ static void sendReply(message::Message reply) {
     fwd_reply_handler_(message::ID(reply), message::MutablePayload(reply));
   }
 
-  if (!datagram3::Send(parent_face_, reply, MESSAGE_DATA_BYTES)) {
-    BLINKBIOS_ABEND_VECTOR(parent_face_);
+  if (!datagram::Send(parent_face_, reply, MESSAGE_DATA_BYTES)) {
+    BLINKBIOS_ABEND_VECTOR(1);
   }
 
   parent_face_ = FACE_COUNT;
@@ -89,8 +88,8 @@ static void sendMessage(const message::Message message) {
                            message::MutablePayload(fwd_message));
     };
 
-    if (!datagram3::Send(f, fwd_message, MESSAGE_DATA_BYTES)) {
-      BLINKBIOS_ABEND_VECTOR(f);
+    if (!datagram::Send(f, fwd_message, MESSAGE_DATA_BYTES)) {
+      BLINKBIOS_ABEND_VECTOR(2);
     }
 
     SET_BIT(sent_faces_, f);
@@ -122,12 +121,12 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
 }
 
 void Process() {
-  datagram3::Process();
+  datagram::Process();
 
   byte datagram[MESSAGE_DATA_BYTES];
   FOREACH_FACE(f) {
     byte datagram_len = MESSAGE_DATA_BYTES;
-    if (!datagram3::Receive(f, datagram, &datagram_len)) continue;
+    if (!datagram::Receive(f, datagram, &datagram_len)) continue;
 
     // Got what appears to be a valid message. Parse it.
     message::Message message;
