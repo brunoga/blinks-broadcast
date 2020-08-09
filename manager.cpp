@@ -17,6 +17,7 @@ static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 
 static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_ = 0;
+static byte expired_faces_ = 0;
 
 static bool has_result_ = false;
 static message::Message result_;
@@ -47,6 +48,13 @@ static bool processMessage(byte f, message::Message message) {
 
       return false;
     }
+
+    if (IS_BIT_SET(expired_faces_, f)) {
+      datagram::Send(f, message, MESSAGE_DATA_BYTES);
+      UNSET_BIT(expired_faces_, f);
+
+      return false;
+    }
   }
 
   // We received a new message. Set our parent and forward the message.
@@ -74,7 +82,13 @@ static void sendReply(message::Message reply) {
 
 static void sendMessage(const message::Message message) {
   FOREACH_FACE(f) {
-    if (isValueReceivedOnFaceExpired(f)) continue;
+    if (isValueReceivedOnFaceExpired(f)) {
+      SET_BIT(expired_faces_, f);
+
+      continue;
+    } else {
+      UNSET_BIT(expired_faces_, f);
+    }
 
     if (f == parent_face_) continue;
 
