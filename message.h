@@ -3,6 +3,7 @@
 
 #include <blinklib.h>
 
+#include "datagram.h"
 #include "payload_bytes.h"
 
 // Set this to the number of bytes you need to send as payload. Anything up to
@@ -17,8 +18,8 @@
 #define MESSAGE_DATA_BYTES MESSAGE_PAYLOAD_BYTES + MESSAGE_HEADER_BYTES
 
 // Make sure we do not try to use more data than we can.
-#if MESSAGE_DATA_BYTES > IR_DATAGRAM_LEN
-#error "MESSAGE_DATA_BYTES must not be greater than IR_DATAGRAM_LEN"
+#if MESSAGE_DATA_BYTES > MAX_DATAGRAM_LEN
+#error "MESSAGE_DATA_BYTES must not be greater than MAX_DATAGRAM_LEN"
 #endif
 
 // Message id 255 is reserved to indicate an invalid message.
