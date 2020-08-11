@@ -4,7 +4,9 @@
 #include <string.h>
 
 #include "bits.h"
+#include "datagram.h"
 #include "debug.h"
+#include "message.h"
 
 namespace broadcast {
 
@@ -16,110 +18,72 @@ static ReceiveReplyHandler rcv_reply_handler_ = nullptr;
 static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 
 static byte parent_face_ = FACE_COUNT;
-static byte sent_faces_ = 0;
-static byte expired_faces_ = 0;
+static byte sent_faces_;
 
-static bool has_result_ = false;
-static message::Message result_;
+static MessageHeader last_message_header_;
 
-static byte last_sequence_ = 0;
+static Message *result_;
 
-static bool processReply(byte f, const message::Message reply) {
-  if (rcv_reply_handler_) {
-    rcv_reply_handler_(message::ID(reply), message::Payload(reply));
+static void send_reply(broadcast::Message *reply) {
+  // Send a reply to our parent.
+
+  if (fwd_reply_handler_ != nullptr) {
+    fwd_reply_handler_(reply->header.id, reply->payload);
   }
 
-  UNSET_BIT(sent_faces_, f);
-
-  return (sent_faces_ == 0);
-}
-
-static bool processMessage(byte f, message::Message message) {
-  if (message::IsFireAndForget(message)) {
-    if (message::Sequence(message) == last_sequence_) {
-      // This is a fire-and-forget message loop.
-      return false;
-    }
-  } else {
-    if (IS_BIT_SET(sent_faces_, f)) {
-      // We already forwarded the message to this face. Ignore it and stop
-      // waiting for a reply on it.
-      UNSET_BIT(sent_faces_, f);
-
-      return false;
-    }
-
-    if (IS_BIT_SET(expired_faces_, f)) {
-      datagram::Send(f, message, MESSAGE_DATA_BYTES);
-      UNSET_BIT(expired_faces_, f);
-
-      return false;
-    }
+  if (!datagram::Send(parent_face_, (const byte *)reply, MESSAGE_DATA_BYTES)) {
+    // Should never happen.
+    BLINKBIOS_ABEND_VECTOR(5);
   }
 
-  // We received a new message. Set our parent and forward the message.
-  parent_face_ = f;
-
-  if (rcv_message_handler_) {
-    rcv_message_handler_(message::ID(message),
-                         message::MutablePayload(message));
-  }
-
-  return true;
-}
-
-static void sendReply(message::Message reply) {
-  if (fwd_reply_handler_) {
-    fwd_reply_handler_(message::ID(reply), message::MutablePayload(reply));
-  }
-
-  if (!datagram::Send(parent_face_, reply, MESSAGE_DATA_BYTES)) {
-    BLINKBIOS_ABEND_VECTOR(1);
-  }
-
+  // Reset parent face.
   parent_face_ = FACE_COUNT;
 }
 
-static void sendMessage(const message::Message message) {
+static void broadcast_message(broadcast::Message *message) {
+  // Broadcast message to all connected blinks (except the parent one).
+
   FOREACH_FACE(f) {
     if (isValueReceivedOnFaceExpired(f)) {
-      SET_BIT(expired_faces_, f);
-
+      // No one seem to be connected to this face. Not necessarily true but
+      // there is not much we can do here.
       continue;
-    } else {
-      UNSET_BIT(expired_faces_, f);
     }
 
-    if (f == parent_face_) continue;
+    if (f == parent_face_) {
+      // Do not send message back to parent.
+      continue;
+    }
 
-    message::Message fwd_message;
-    message::Set(fwd_message, message::ID(message), message::Sequence(message),
-                 message::Payload(message), false,
-                 message::IsFireAndForget(message));
+    broadcast::Message fwd_message;
+    memcpy(&fwd_message, message, MESSAGE_DATA_BYTES);
 
-    if (fwd_message_handler_) {
-      fwd_message_handler_(message::ID(fwd_message), parent_face_, f,
-                           message::MutablePayload(fwd_message));
+    if (fwd_message_handler_ != nullptr) {
+      fwd_message_handler_(fwd_message.header.id, parent_face_, f,
+                           fwd_message.payload);
     };
 
-    if (!datagram::Send(f, fwd_message, MESSAGE_DATA_BYTES)) {
-      BLINKBIOS_ABEND_VECTOR(2);
+    if (datagram::Send(f, (const byte *)&fwd_message, MESSAGE_DATA_BYTES)) {
+      // Mark this face as having data sent to it.
+      SET_BIT(sent_faces_, f);
     }
-
-    SET_BIT(sent_faces_, f);
   }
 
-  if (message::IsFireAndForget(message)) {
-    // Fire and forget. Clear sent faces and parent.
-    sent_faces_ = 0;
+  if (message->header.is_fire_and_forget) {
     parent_face_ = FACE_COUNT;
+    sent_faces_ = 0;
+
+    return;
   }
 
-  // Record last sequence we sent.
-  //
-  // TODO(bga): Currently this is only used for fire-and-forget messages.
-  // Consider using it for normal ones too.
-  last_sequence_ = message::Sequence(message);
+  if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
+    // We did not send data to any faces and we have a parent, so we are most
+    // likelly a leaf node. Send reply back.
+    message->header.is_reply = true;
+    message::ClearPayload(message);
+
+    send_reply(message);
+  }
 }
 
 void Setup(ReceiveMessageHandler rcv_message_handler,
@@ -130,78 +94,113 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
   fwd_message_handler_ = fwd_message_handler;
   rcv_reply_handler_ = rcv_reply_handler;
   fwd_reply_handler_ = fwd_reply_handler;
-
-  message::Set(result_, MESSAGE_INVALID, 0, nullptr, false);
 }
 
 void Process() {
   datagram::Process();
 
-  byte datagram[MESSAGE_DATA_BYTES];
+  // Receive any pending data on all faces.
+
   FOREACH_FACE(f) {
-    byte datagram_len = MESSAGE_DATA_BYTES;
-    if (!datagram::Receive(f, datagram, &datagram_len)) continue;
+    byte len;
+    const byte *rcv_datagram = datagram::Receive(f, &len);
 
-    // Got what appears to be a valid message. Parse it.
-    message::Message message;
-    message::Set(message, datagram);
+    if (rcv_datagram == nullptr) {
+      // No data available. Nothing to do.
+      continue;
+    }
 
-    if (message::IsReply(message)) {
-      if (processReply(f, message)) {
-        if (parent_face_ == FACE_COUNT) {
-          if (fwd_reply_handler_) {
-            fwd_reply_handler_(message::ID(message),
-                               message::MutablePayload(message));
-          }
+    broadcast::Message *message = (broadcast::Message *)rcv_datagram;
 
-          has_result_ = true;
-          message::Set(result_, message::ID(message),
-                       message::Sequence(message), message::Payload(message),
-                       true);
-          continue;
+    if (!message->header.is_reply) {
+      // Got a message.
+      if (IS_BIT_SET(sent_faces_, f)) {
+        // We already sent to this face, so this is a loop. Mark face as not
+        // sent.
+        UNSET_BIT(sent_faces_, f);
+
+        if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
+          // This was the last face we were waiting on and we have a parent.
+          // Send reply back.
+          message->header.is_reply = true;
+          broadcast::message::ClearPayload(message);
+
+          send_reply(message);
         }
 
-        sendReply(message);
-      }
-    } else {
-      if (processMessage(f, message)) {
-        sendMessage(message);
-      }
-
-      if (message::IsFireAndForget(message)) {
         continue;
       }
 
-      // Are we still waiting for replies on any faces?
-      if (sent_faces_ != 0) continue;
+      if (message->header.value == last_message_header_.value) {
+        if (!message->header.is_fire_and_forget) {
+          if (!datagram::Send(f, (const byte *)message, DATAGRAM_BYTES)) {
+            // Should never happen.
+            BLINKBIOS_ABEND_VECTOR(6);
+          }
+        }
 
-      // Nope, so we are a leaf node and should reply to the message.
-      message::Message reply;
-      message::Set(reply, message::ID(message), message::Sequence(message),
-                   message::Payload(message), true);
+        continue;
+      }
 
-      sendReply(reply);
+      // Set our parent face.
+      parent_face_ = f;
+
+      last_message_header_ = message->header;
+
+      if (rcv_message_handler_ != nullptr) {
+        rcv_message_handler_(message->header.id, message->payload);
+      }
+
+      // Broadcast message.
+      broadcast_message(message);
+    } else {
+      // Got a reply.
+
+      if (rcv_reply_handler_ != nullptr) {
+        rcv_reply_handler_(message->header.id, message->payload);
+      }
+
+      // Mark face as not pending anymore.
+      UNSET_BIT(sent_faces_, f);
+
+      if (sent_faces_ == 0) {
+        if (parent_face_ == FACE_COUNT) {
+          if (fwd_reply_handler_ != nullptr) {
+            fwd_reply_handler_(message->header.id, message->payload);
+          }
+
+          result_ = message;
+        } else {
+          // This was the last face we were waiting on and we have a parent.
+          // Send reply back.
+          message->header.is_reply = true;
+          broadcast::message::ClearPayload(message);
+
+          send_reply(message);
+        }
+      }
     }
   }
 }
 
-bool Send(const broadcast::message::Message message) {
+bool Send(broadcast::Message *message) {
   if (sent_faces_ != 0) return false;
 
-  sendMessage(message);
+  message->header.sequence = (last_message_header_.sequence % 7) + 1;
+
+  last_message_header_ = message->header;
+
+  broadcast_message(message);
+
+  result_ = nullptr;
 
   return true;
 }
 
-bool Receive(broadcast::message::Message reply) {
-  if (!has_result_) return false;
+bool Receive(broadcast::Message *reply) {
+  if (result_ == nullptr) return false;
 
-  if (reply != nullptr) {
-    message::Set(reply, message::ID(result_), message::Sequence(result_),
-                 message::Payload(result_), message::IsReply(result_));
-  }
-
-  has_result_ = false;
+  memcpy(reply, result_, MESSAGE_DATA_BYTES);
 
   return true;
 }

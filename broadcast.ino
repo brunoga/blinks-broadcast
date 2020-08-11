@@ -57,14 +57,13 @@ void fwd_reply_handler(byte message_id, byte* payload) {
   displayColor = MAGENTA;
 }
 
-broadcast::message::Message count_blinks;
-broadcast::message::Message report_blinks;
+broadcast::Message count_blinks;
+broadcast::Message report_blinks;
 
 void setup() {
-  broadcast::message::Set(count_blinks, MESSAGE_COUNT_BLINKS, 0, nullptr,
-                          false);
-  broadcast::message::Set(report_blinks, MESSAGE_REPORT_BLINKS_COUNT, 0,
-                          nullptr, false, true);
+  broadcast::message::Initialize(&count_blinks, MESSAGE_COUNT_BLINKS, false);
+  broadcast::message::Initialize(&report_blinks, MESSAGE_REPORT_BLINKS_COUNT,
+                                 true);
 
   broadcast::manager::Setup(rcv_message_handler, nullptr, rcv_reply_handler,
                             fwd_reply_handler);
@@ -79,24 +78,23 @@ void loop() {
 
   if (buttonSingleClicked()) {
     reported_blinks = false;
-    if (!broadcast::manager::Send(count_blinks)) {
+    if (!broadcast::manager::Send(&count_blinks)) {
       displayColor = RED;
     }
   }
 
-  broadcast::message::Message result;
-  if (!broadcast::manager::Receive(result)) return;
+  broadcast::Message result;
+  if (!broadcast::manager::Receive(&result)) return;
 
   displayColor = GREEN;
 
   LOGF("Number of blinks (counted): ");
-  LOGLN(broadcast::message::Payload(result)[0]);
+  LOGLN(result.payload[0]);
 
   if (reported_blinks) return;
 
-  broadcast::message::MutablePayload(report_blinks)[0] =
-      broadcast::message::Payload(result)[0];
-  if (!broadcast::manager::Send(report_blinks)) {
+  report_blinks.payload[0] = result.payload[0];
+  if (!broadcast::manager::Send(&report_blinks)) {
     displayColor = RED;
   }
 

@@ -59,12 +59,12 @@ void Process();
 // message being routed reaches the current node and the reply_handler callback
 // is called for any replies that reaches it. Returns true if the message was
 // sent and false otherwise.
-bool Send(const broadcast::message::Message message);
+bool Send(broadcast::Message *message);
 
 // Tries to receive the result of a sent message. This will only ever return
 // true at the same node that sent the message. Returns true if a result was
 // available and false otherwise.
-bool Receive(broadcast::message::Message result);
+bool Receive(broadcast::Message *result);
 
 }  // namespace manager
 
