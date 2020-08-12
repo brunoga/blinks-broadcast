@@ -99,6 +99,10 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
 void Process() {
   datagram::Process();
 
+  // Invalidate result as it most likelly is not the same data as when it was
+  // received.
+  result_ = nullptr;
+
   // Receive any pending data on all faces.
 
   FOREACH_FACE(f) {
@@ -191,8 +195,6 @@ bool Send(broadcast::Message *message) {
   last_message_header_ = message->header;
 
   broadcast_message(message);
-
-  result_ = nullptr;
 
   return true;
 }
