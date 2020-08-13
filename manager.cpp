@@ -185,6 +185,8 @@ void Process() {
 bool Send(broadcast::Message *message) {
   if (sent_faces_ != 0) return false;
 
+  if (message == nullptr) return false;
+
   message->header.sequence = (last_message_header_.sequence % 7) + 1;
 
   last_message_header_ = message->header;
@@ -197,7 +199,9 @@ bool Send(broadcast::Message *message) {
 bool Receive(broadcast::Message *reply) {
   if (result_ == nullptr) return false;
 
-  memcpy(reply, result_, MESSAGE_DATA_BYTES);
+  if (reply != nullptr) {
+    memcpy(reply, result_, MESSAGE_DATA_BYTES);
+  }
 
   return true;
 }
