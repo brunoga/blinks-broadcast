@@ -1,9 +1,14 @@
+#include <shared/blinkbios_shared_functions.h>
+#include <string.h>
+
 #include "debug.h"
 #include "manager.h"
 #include "message.h"
 
 #define MESSAGE_COUNT_BLINKS 1
 #define MESSAGE_REPORT_BLINKS_COUNT 2
+
+static byte message_payload_[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
 
 Color displayColor = OFF;
 
@@ -23,11 +28,27 @@ void rcv_message_handler(byte message_id, byte* payload) {
 
   // We do not need to do anything. Just change our color to
   // note we forwarded a message.
+  for (byte i = 0; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+    if (message_payload_[i] != payload[i]) {
+      BLINKBIOS_ABEND_VECTOR(1);
+    }
+  }
+
   displayColor = YELLOW;
 
   // Silence unused variable warnings.
-  (void)payload;
   (void)message_id;
+}
+
+void fwd_message_handler(byte message_id, byte src_face, byte dst_face,
+                         byte* payload) {
+  if (message_id == MESSAGE_COUNT_BLINKS) {
+    for (byte i = 0; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+      if (message_payload_[i] != payload[i]) {
+        BLINKBIOS_ABEND_VECTOR(1);
+      }
+    }
+  }
 }
 
 byte sum = 1;
@@ -36,6 +57,12 @@ void rcv_reply_handler(byte message_id, const byte* payload) {
   if (message_id == MESSAGE_COUNT_BLINKS) {
     // Add the amount we just got from a neighbor to our local sum.
     sum += payload[0];
+
+    for (byte i = 1; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+      if (payload[i] != 0) {
+        BLINKBIOS_ABEND_VECTOR(2);
+      }
+    }
   }
 
   displayColor = CYAN;
@@ -51,6 +78,12 @@ void fwd_reply_handler(byte message_id, byte* payload) {
 
     displayColor = BLUE;
 
+    for (byte i = 1; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+      if (payload[i] != 0) {
+        BLINKBIOS_ABEND_VECTOR(3);
+      }
+    }
+
     return;
   }
 
@@ -62,11 +95,13 @@ broadcast::Message report_blinks;
 
 void setup() {
   broadcast::message::Initialize(&count_blinks, MESSAGE_COUNT_BLINKS, false);
+  memcpy(count_blinks.payload, message_payload_, MESSAGE_PAYLOAD_BYTES);
+
   broadcast::message::Initialize(&report_blinks, MESSAGE_REPORT_BLINKS_COUNT,
                                  true);
 
-  broadcast::manager::Setup(rcv_message_handler, nullptr, rcv_reply_handler,
-                            fwd_reply_handler);
+  broadcast::manager::Setup(rcv_message_handler, fwd_message_handler,
+                            rcv_reply_handler, fwd_reply_handler);
 }
 
 bool reported_blinks = false;

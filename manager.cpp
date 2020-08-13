@@ -27,6 +27,10 @@ static Message *result_;
 static void send_reply(broadcast::Message *reply) {
   // Send a reply to our parent.
 
+  // Set message as reply and clear payload.
+  reply->header.is_reply = true;
+  message::ClearPayload(reply);
+
   if (fwd_reply_handler_ != nullptr) {
     fwd_reply_handler_(reply->header.id, reply->payload);
   }
@@ -79,9 +83,6 @@ static void broadcast_message(broadcast::Message *message) {
   if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
     // We did not send data to any faces and we have a parent, so we are most
     // likelly a leaf node. Send reply back.
-    message->header.is_reply = true;
-    message::ClearPayload(message);
-
     send_reply(message);
   }
 }
@@ -126,9 +127,6 @@ void Process() {
         if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
           // This was the last face we were waiting on and we have a parent.
           // Send reply back.
-          message->header.is_reply = true;
-          broadcast::message::ClearPayload(message);
-
           send_reply(message);
         }
 
@@ -137,7 +135,7 @@ void Process() {
 
       if (message->header.value == last_message_header_.value) {
         if (!message->header.is_fire_and_forget) {
-          if (!datagram::Send(f, (const byte *)message, DATAGRAM_BYTES)) {
+          if (!datagram::Send(f, (const byte *)message, MESSAGE_DATA_BYTES)) {
             // Should never happen.
             BLINKBIOS_ABEND_VECTOR(6);
           }
@@ -177,9 +175,6 @@ void Process() {
         } else {
           // This was the last face we were waiting on and we have a parent.
           // Send reply back.
-          message->header.is_reply = true;
-          broadcast::message::ClearPayload(message);
-
           send_reply(message);
         }
       }
