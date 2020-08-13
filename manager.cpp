@@ -189,10 +189,6 @@ bool Send(broadcast::Message *message) {
 
   if (message == nullptr) return false;
 
-  FOREACH_FACE(face) {
-    if (datagram::PendingSend(face)) return false;
-  }
-
   message->header.sequence = (last_message_header_.sequence % 7) + 1;
 
   last_message_header_ = message->header;
