@@ -115,6 +115,8 @@ void Process() {
       continue;
     }
 
+    // We are removing the constness here but this is fine in this case and it
+    // is worth to avoid copies.
     broadcast::Message *message = (broadcast::Message *)rcv_datagram;
 
     if (!message->header.is_reply) {
