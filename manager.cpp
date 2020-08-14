@@ -1,6 +1,5 @@
 #include "manager.h"
 
-#include <shared/blinkbios_shared_functions.h>
 #include <string.h>
 
 #include "bits.h"
@@ -38,7 +37,6 @@ static void send_reply(broadcast::Message *reply) {
 
   if (!datagram::Send(parent_face_, (const byte *)reply, len + 1)) {
     // Should never happen.
-    BLINKBIOS_ABEND_VECTOR(5);
   }
 
   // Reset parent face.
@@ -51,7 +49,8 @@ static void broadcast_message(broadcast::Message *message) {
   FOREACH_FACE(f) {
     if (isValueReceivedOnFaceExpired(f)) {
       // No one seem to be connected to this face. Not necessarily true but
-      // there is not much we can do here.
+      // there is not much we can do here. Even if a face is connected but show
+      // as expired, the way messages are routed should make up for it anyway.
       continue;
     }
 
@@ -86,6 +85,25 @@ static void broadcast_message(broadcast::Message *message) {
     // We did not send data to any faces and we have a parent, so we are most
     // likelly a leaf node. Send reply back.
     send_reply(message);
+  }
+}
+
+void send_reply_or_set_result(Message *message) {
+  if (sent_faces_ == 0) {
+    // We are not waiting on any faces anymore.
+    if (parent_face_ == FACE_COUNT) {
+      // We do not have a parent, so surface the result here.
+      if (fwd_reply_handler_ != nullptr) {
+        // We can ignore the return value here as it is irrelevant.
+        fwd_reply_handler_(message->header.id, message->payload);
+      }
+
+      result_ = message;
+    } else {
+      // This was the last face we were waiting on and we have a parent.
+      // Send reply back.
+      send_reply(message);
+    }
   }
 }
 
@@ -130,20 +148,17 @@ void Process() {
         // sent.
         UNSET_BIT(sent_faces_, f);
 
-        if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
-          // This was the last face we were waiting on and we have a parent.
-          // Send reply back.
-          send_reply(message);
-        }
+        send_reply_or_set_result(message);
 
         continue;
       }
 
       if (message->header.value == last_message_header_.value) {
         if (!message->header.is_fire_and_forget) {
-          if (!datagram::Send(f, (const byte *)message, MESSAGE_DATA_BYTES)) {
+          // We can send a single byte back with our header as we just want the
+          // peer to stop waiting on us.
+          if (!datagram::Send(f, (const byte *)message, 1)) {
             // Should never happen.
-            BLINKBIOS_ABEND_VECTOR(6);
           }
         }
 
@@ -171,20 +186,7 @@ void Process() {
       // Mark face as not pending anymore.
       UNSET_BIT(sent_faces_, f);
 
-      if (sent_faces_ == 0) {
-        if (parent_face_ == FACE_COUNT) {
-          if (fwd_reply_handler_ != nullptr) {
-            // We can ignore the return value here as it is irrelevant.
-            fwd_reply_handler_(message->header.id, message->payload);
-          }
-
-          result_ = message;
-        } else {
-          // This was the last face we were waiting on and we have a parent.
-          // Send reply back.
-          send_reply(message);
-        }
-      }
+      send_reply_or_set_result(message);
     }
   }
 }
