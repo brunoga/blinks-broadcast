@@ -31,11 +31,12 @@ static void send_reply(broadcast::Message *reply) {
   reply->header.is_reply = true;
   message::ClearPayload(reply);
 
+  byte len = MESSAGE_DATA_BYTES - 1;
   if (fwd_reply_handler_ != nullptr) {
-    fwd_reply_handler_(reply->header.id, reply->payload);
+    len = fwd_reply_handler_(reply->header.id, reply->payload);
   }
 
-  if (!datagram::Send(parent_face_, (const byte *)reply, MESSAGE_DATA_BYTES)) {
+  if (!datagram::Send(parent_face_, (const byte *)reply, len + 1)) {
     // Should never happen.
     BLINKBIOS_ABEND_VECTOR(5);
   }
@@ -62,12 +63,13 @@ static void broadcast_message(broadcast::Message *message) {
     broadcast::Message fwd_message;
     memcpy(&fwd_message, message, MESSAGE_DATA_BYTES);
 
+    byte len = MESSAGE_DATA_BYTES - 1;
     if (fwd_message_handler_ != nullptr) {
-      fwd_message_handler_(fwd_message.header.id, parent_face_, f,
-                           fwd_message.payload);
+      len = fwd_message_handler_(fwd_message.header.id, parent_face_, f,
+                                 fwd_message.payload);
     };
 
-    if (datagram::Send(f, (const byte *)&fwd_message, MESSAGE_DATA_BYTES)) {
+    if (datagram::Send(f, (const byte *)&fwd_message, len + 1)) {
       // Mark this face as having data sent to it.
       SET_BIT(sent_faces_, f);
     }
@@ -116,7 +118,9 @@ void Process() {
     }
 
     // We are removing the constness here but this is fine in this case and it
-    // is worth to avoid copies.
+    // is worth to avoid copies. Also, we might receive a message that is
+    // smaller than Message but it is ok as the underlying buffer is of the
+    // right size.
     broadcast::Message *message = (broadcast::Message *)rcv_datagram;
 
     if (!message->header.is_reply) {
@@ -170,6 +174,7 @@ void Process() {
       if (sent_faces_ == 0) {
         if (parent_face_ == FACE_COUNT) {
           if (fwd_reply_handler_ != nullptr) {
+            // We can ignore the return value here as it is irrelevant.
             fwd_reply_handler_(message->header.id, message->payload);
           }
 

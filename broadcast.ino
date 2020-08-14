@@ -40,7 +40,7 @@ void rcv_message_handler(byte message_id, byte* payload) {
   (void)message_id;
 }
 
-void fwd_message_handler(byte message_id, byte src_face, byte dst_face,
+byte fwd_message_handler(byte message_id, byte src_face, byte dst_face,
                          byte* payload) {
   if (message_id == MESSAGE_COUNT_BLINKS) {
     for (byte i = 0; i < MESSAGE_PAYLOAD_BYTES; ++i) {
@@ -49,6 +49,8 @@ void fwd_message_handler(byte message_id, byte src_face, byte dst_face,
       }
     }
   }
+
+  return MESSAGE_PAYLOAD_BYTES;
 }
 
 byte sum = 1;
@@ -68,7 +70,7 @@ void rcv_reply_handler(byte message_id, const byte* payload) {
   displayColor = CYAN;
 }
 
-void fwd_reply_handler(byte message_id, byte* payload) {
+byte fwd_reply_handler(byte message_id, byte* payload) {
   if (message_id == MESSAGE_COUNT_BLINKS) {
     // All faces reported. Set payload to our sum.
     payload[0] = sum;
@@ -84,10 +86,12 @@ void fwd_reply_handler(byte message_id, byte* payload) {
       }
     }
 
-    return;
+    return MESSAGE_PAYLOAD_BYTES;
   }
 
   displayColor = MAGENTA;
+
+  return MESSAGE_PAYLOAD_BYTES;
 }
 
 broadcast::Message count_blinks;

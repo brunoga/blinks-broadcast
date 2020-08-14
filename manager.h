@@ -26,7 +26,9 @@ typedef void (*ReceiveMessageHandler)(byte message_id, byte *payload);
 // between messages so specific code can be executed. the src_face and dst_face
 // are, respectively, the face the message arrived from and the face it is being
 // forwarded to. This is also called for fire-and-forget messages.
-typedef void (*ForwardMessageHandler)(byte message_id, byte src_face,
+// Implementations should return the actual message payload size (which might be
+// smaller than MESSAGE_PAYLOAD_BYTES).
+typedef byte (*ForwardMessageHandler)(byte message_id, byte src_face,
                                       byte dst_face, byte *payload);
 
 // Prototype for functions that want to take action on  a reply as soon as
@@ -42,7 +44,9 @@ typedef void (*ReceiveReplyHandler)(byte message_id, const byte *payload);
 // the replies and set the payload to something meaningful. The message_id
 // parameter can be used to differentiate between different messages so specific
 // code can be executed. This is never called for fire-and-forget messages.
-typedef void (*ForwardReplyHandler)(byte message_id, byte *payload);
+// Implementations should return the actual reply payload size (which might be
+// smaller than MESSAGE_PAYLOAD_BYTES).
+typedef byte (*ForwardReplyHandler)(byte message_id, byte *payload);
 
 // Configures the message manager with the given handlers.
 void Setup(ReceiveMessageHandler rcv_message_handler,
