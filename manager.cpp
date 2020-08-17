@@ -83,7 +83,7 @@ static void broadcast_message(broadcast::Message *message) {
 
   if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
     // We did not send data to any faces and we have a parent, so we are most
-    // likelly a leaf node. Send reply back.
+    // likelly a leaf Blink. Send reply back.
     send_reply(message);
   }
 }
