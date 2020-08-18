@@ -23,6 +23,8 @@ static MessageHeader last_message_header_;
 
 static Message *result_;
 
+static byte pending_clear_;
+
 static void send_reply(broadcast::Message *reply) {
   // Send a reply to our parent.
 
@@ -124,6 +126,26 @@ void Process() {
   // received.
   result_ = nullptr;
 
+  if (pending_clear_ != 0) {
+    // There is at least one connected Blink that is waiting on us. We need to
+    // tell it not to anymore.
+    FOREACH_FACE(f) {
+      if (IS_BIT_SET(pending_clear_, f)) {
+        if (datagram::Send(f, (const byte *)&last_message_header_, 1)) {
+          // Message was sent, so we can unmark this face.
+          UNSET_BIT(pending_clear_, f);
+        }
+
+        // If the send fails. we will simply retry next time.
+      }
+    }
+
+    // We do not move on until all pending clear having been dealt with. Note
+    // that at this point all of them might already be cleared and we could
+    // simply continue immediatelly, but it is not work the storage cost.
+    return;
+  }
+
   // Receive any pending data on all faces.
 
   FOREACH_FACE(f) {
@@ -158,7 +180,10 @@ void Process() {
           // We can send a single byte back with our header as we just want the
           // peer to stop waiting on us.
           if (!datagram::Send(f, (const byte *)message, 1)) {
-            // Should never happen.
+            // There was a pending send when we tried to unblock our peer Blink.
+            // Mark this face as pending clear and it will be dealt with during
+            // the following Proces() calls.
+            SET_BIT(pending_clear_, f);
           }
         }
 
