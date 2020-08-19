@@ -240,6 +240,8 @@ bool Receive(broadcast::Message *reply) {
   return true;
 }
 
+bool Processing() { return sent_faces_ != 0; }
+
 }  // namespace manager
 
 }  // namespace broadcast
