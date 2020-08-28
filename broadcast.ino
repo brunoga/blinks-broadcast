@@ -8,7 +8,8 @@
 #define MESSAGE_COUNT_BLINKS 1
 #define MESSAGE_REPORT_BLINKS_COUNT 2
 
-static byte message_payload_[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+static byte message_payload_[] = {0, 1, 2,  3,  4,  5,  6, 7,
+                                  8, 9, 10, 11, 12, 13, 14};
 
 Color displayColor = OFF;
 
@@ -49,6 +50,9 @@ byte fwd_message_handler(byte message_id, byte src_face, byte dst_face,
       }
     }
   }
+
+  (void)src_face;
+  (void)dst_face;
 
   return MESSAGE_PAYLOAD_BYTES;
 }

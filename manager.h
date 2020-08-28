@@ -75,7 +75,6 @@ bool Receive(broadcast::Message *result);
 // in progress.
 bool Processing();
 
-
 }  // namespace manager
 
 }  // namespace broadcast

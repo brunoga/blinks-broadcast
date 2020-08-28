@@ -3,9 +3,12 @@
 #include <string.h>
 
 #include "bits.h"
-#include "datagram.h"
 #include "debug.h"
 #include "message.h"
+
+#ifndef BGA_CUSTOM_BLINKLIB
+#error "This code requires BGA's Custom Blinklib"
+#endif
 
 namespace broadcast {
 
@@ -23,8 +26,6 @@ static MessageHeader last_message_header_;
 
 static Message *result_;
 
-static byte pending_clear_;
-
 static void send_reply(broadcast::Message *reply) {
   // Send a reply to our parent.
 
@@ -37,9 +38,8 @@ static void send_reply(broadcast::Message *reply) {
     len = fwd_reply_handler_(reply->header.id, reply->payload);
   }
 
-  if (!datagram::Send(parent_face_, (const byte *)reply, len + 1)) {
-    // Should never happen.
-  }
+  // Should never fail.
+  sendDatagramOnFace((const byte *)reply, len + 1, parent_face_);
 
   // Reset parent face.
   parent_face_ = FACE_COUNT;
@@ -70,10 +70,10 @@ static void broadcast_message(broadcast::Message *message) {
                                  fwd_message.payload);
     };
 
-    if (datagram::Send(f, (const byte *)&fwd_message, len + 1)) {
-      // Mark this face as having data sent to it.
-      SET_BIT(sent_faces_, f);
-    }
+    // Should never fail.
+    sendDatagramOnFace((const byte *)&fwd_message, len + 1, f);
+
+    SET_BIT(sent_faces_, f);
   }
 
   if (message->header.is_fire_and_forget) {
@@ -119,43 +119,39 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
   fwd_reply_handler_ = fwd_reply_handler;
 }
 
-void Process() {
-  datagram::Process();
+static bool pending_send() {
+  FOREACH_FACE(face) {
+    if (isDatagramPendingOnFace(face)) return true;
+  }
 
+  return false;
+}
+
+void Process() {
   // Invalidate result as it most likelly is not the same data as when it was
   // received.
   result_ = nullptr;
 
-  if (pending_clear_ != 0) {
-    // There is at least one connected Blink that is waiting on us. We need to
-    // tell it not to anymore.
-    FOREACH_FACE(f) {
-      if (IS_BIT_SET(pending_clear_, f)) {
-        if (datagram::Send(f, (const byte *)&last_message_header_, 1)) {
-          // Message was sent, so we can unmark this face.
-          UNSET_BIT(pending_clear_, f);
-        }
-
-        // If the send fails. we will simply retry next time.
-      }
-    }
-
-    // We do not move on until all pending clear having been dealt with. Note
-    // that at this point all of them might already be cleared and we could
-    // simply continue immediatelly, but it is not work the storage cost.
+  if (pending_send()) {
+    // We wait until any pending messages are cleared before we move on with
+    // processing. This guarantees that no sendDatagramOnFace() calls after
+    // this will fail (assuming we do not try to send more than one time in a
+    // single face, that is, which this code never does currently).
     return;
   }
 
   // Receive any pending data on all faces.
 
   FOREACH_FACE(f) {
-    byte len;
-    const byte *rcv_datagram = datagram::Receive(f, &len);
+    byte len = getDatagramLengthOnFace(f);
 
-    if (rcv_datagram == nullptr) {
+    if (len == 0) {
       // No data available. Nothing to do.
       continue;
     }
+
+    const byte *rcv_datagram = getDatagramOnFace(f);
+    markDatagramReadOnFace(f);
 
     // We are removing the constness here but this is fine in this case and it
     // is worth to avoid copies. Also, we might receive a message that is
@@ -176,15 +172,16 @@ void Process() {
       }
 
       if (message->header.value == last_message_header_.value) {
+        // We got another message identical to the last one we processed after
+        // we got replies from all faces. This is a late propagation message so
+        // we can not simply ignore if it is not a fire-and-forget message and
+        // have to tell the sender not to wait on us (by forcing a loop).
         if (!message->header.is_fire_and_forget) {
           // We can send a single byte back with our header as we just want the
           // peer to stop waiting on us.
-          if (!datagram::Send(f, (const byte *)message, 1)) {
-            // There was a pending send when we tried to unblock our peer Blink.
-            // Mark this face as pending clear and it will be dealt with during
-            // the following Proces() calls.
-            SET_BIT(pending_clear_, f);
-          }
+
+          // Should never fail.
+          sendDatagramOnFace((const byte *)message, 1, f);
         }
 
         continue;
