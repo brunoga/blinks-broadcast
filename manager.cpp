@@ -46,7 +46,7 @@ static void send_reply(broadcast::Message *reply) {
   parent_face_ = FACE_COUNT;
 }
 
-void send_reply_or_set_result(Message *message) {
+void maybe_send_reply_or_set_result(Message *message) {
   if (sent_faces_ == 0) {
     // We are not waiting on any faces anymore.
     if (parent_face_ == FACE_COUNT) {
@@ -103,7 +103,7 @@ static void broadcast_message(broadcast::Message *message) {
     return;
   }
 
-  send_reply_or_set_result(message);
+  maybe_send_reply_or_set_result(message);
 }
 
 void Setup(ReceiveMessageHandler rcv_message_handler,
@@ -163,7 +163,7 @@ void Process() {
         // sent.
         UNSET_BIT(sent_faces_, f);
 
-        send_reply_or_set_result(message);
+        maybe_send_reply_or_set_result(message);
 
         continue;
       }
@@ -205,7 +205,7 @@ void Process() {
       // Mark face as not pending anymore.
       UNSET_BIT(sent_faces_, f);
 
-      send_reply_or_set_result(message);
+      maybe_send_reply_or_set_result(message);
     }
   }
 }
