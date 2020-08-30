@@ -1,5 +1,6 @@
 #include "manager.h"
 
+#include <blinklib.h>
 #include <string.h>
 
 #include "bits.h"
@@ -45,6 +46,25 @@ static void send_reply(broadcast::Message *reply) {
   parent_face_ = FACE_COUNT;
 }
 
+void send_reply_or_set_result(Message *message) {
+  if (sent_faces_ == 0) {
+    // We are not waiting on any faces anymore.
+    if (parent_face_ == FACE_COUNT) {
+      // We do not have a parent, so surface the result here.
+      if (fwd_reply_handler_ != nullptr) {
+        // We can ignore the return value here as it is irrelevant.
+        fwd_reply_handler_(message->header.id, message->payload);
+      }
+
+      result_ = message;
+    } else {
+      // This was the last face we were waiting on and we have a parent.
+      // Send reply back.
+      send_reply(message);
+    }
+  }
+}
+
 static void broadcast_message(broadcast::Message *message) {
   // Broadcast message to all connected blinks (except the parent one).
 
@@ -83,30 +103,7 @@ static void broadcast_message(broadcast::Message *message) {
     return;
   }
 
-  if (sent_faces_ == 0 && parent_face_ != FACE_COUNT) {
-    // We did not send data to any faces and we have a parent, so we are most
-    // likelly a leaf Blink. Send reply back.
-    send_reply(message);
-  }
-}
-
-void send_reply_or_set_result(Message *message) {
-  if (sent_faces_ == 0) {
-    // We are not waiting on any faces anymore.
-    if (parent_face_ == FACE_COUNT) {
-      // We do not have a parent, so surface the result here.
-      if (fwd_reply_handler_ != nullptr) {
-        // We can ignore the return value here as it is irrelevant.
-        fwd_reply_handler_(message->header.id, message->payload);
-      }
-
-      result_ = message;
-    } else {
-      // This was the last face we were waiting on and we have a parent.
-      // Send reply back.
-      send_reply(message);
-    }
-  }
+  send_reply_or_set_result(message);
 }
 
 void Setup(ReceiveMessageHandler rcv_message_handler,
