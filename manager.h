@@ -12,10 +12,13 @@ namespace manager {
 // any changes in the payload will be seen by upstream Blinks (unless modified
 // by a ForwardMessageHandler. See below). The message_id parameter can be used
 // to differentiate between messages so specific code can be executed. The
-// src_face parameter is the face the message arrived on. This is also called
+// src_face parameter is the face the message arrived on. If the loop parameter
+// is true, this means that this handler was called because a message that
+// caused a loop was received. In this case, payload will be nullptr and any
+// actions should be based only on message_id and src_face. This is also called
 // for fire-and-forget messages.
 typedef void (*ReceiveMessageHandler)(byte message_id, byte src_face,
-                                      byte *payload);
+                                      byte *payload, bool loop);
 
 // Prototype for functions that want to change the payload of a message just
 // before it is forwarded to the next Blink. This is called once per connected

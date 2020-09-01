@@ -47,6 +47,9 @@ static void send_reply(broadcast::Message *reply) {
 }
 
 void maybe_send_reply_or_set_result(Message *message) {
+  // Nothing to do for fire and forget messages.
+  if (message->header.is_fire_and_forget) return;
+
   if (sent_faces_ == 0) {
     // We are not waiting on any faces anymore.
     if (parent_face_ == FACE_COUNT) {
@@ -94,6 +97,12 @@ static void broadcast_message(broadcast::Message *message) {
     sendDatagramOnFace((const byte *)&fwd_message, len + 1, f);
 
     SET_BIT(sent_faces_, f);
+  }
+
+  if (message->header.is_fire_and_forget) {
+    // Fire and forget message. Reset everything but last_message_header_.
+    parent_face_ = FACE_COUNT;
+    sent_faces_ = 0;
   }
 }
 
@@ -153,6 +162,9 @@ void Process() {
         // We already sent to this face, so this is a loop. Mark face as not
         // sent.
         UNSET_BIT(sent_faces_, f);
+
+        // Call receive handler to take action on loop if needed.
+        rcv_message_handler_(message->header.id, f, nullptr, true);
       } else {
         if (message->header.value == last_message_header_.value) {
           // We got another message identical to the last one we processed after
@@ -165,6 +177,10 @@ void Process() {
 
             // Should never fail.
             sendDatagramOnFace((const byte *)message, 1, f);
+          } else {
+            // Fire-and-forget message loops simply mean a Blink got the same
+            // message more than once.
+            rcv_message_handler_(message->header.id, f, nullptr, true);
           }
 
           continue;
@@ -176,19 +192,11 @@ void Process() {
         last_message_header_ = message->header;
 
         if (rcv_message_handler_ != nullptr) {
-          rcv_message_handler_(message->header.id, f, message->payload);
+          rcv_message_handler_(message->header.id, f, message->payload, false);
         }
 
         // Broadcast message.
         broadcast_message(message);
-
-        if (message->header.is_fire_and_forget) {
-          // Fire and forget message. Reset everything but last_message_header_.
-          parent_face_ = FACE_COUNT;
-          sent_faces_ = 0;
-
-          continue;
-        }
       }
     } else {
       // Got a reply.

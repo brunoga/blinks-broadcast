@@ -11,15 +11,24 @@
 static byte message_payload_[] = {0, 1, 2,  3,  4,  5,  6, 7,
                                   8, 9, 10, 11, 12, 13, 14};
 
-Color displayColor = OFF;
-
 byte blinks_count = 0;
 
-void rcv_message_handler(byte message_id, byte src_face, byte* payload) {
+void rcv_message_handler(byte message_id, byte src_face, byte* payload,
+                         bool loop) {
+  if (loop) {
+    // On a loop, we just want to turn the face led off.
+    setColorOnFace(OFF, src_face);
+
+    return;
+  }
+
+  // Reset all leds.
+  setColor(OFF);
+
   if (message_id == MESSAGE_REPORT_BLINKS_COUNT) {
     blinks_count = *payload;
 
-    displayColor = ORANGE;
+    setColorOnFace(ORANGE, src_face);
 
     LOGF("Number of blinks (reported): ");
     LOGLN(payload[0]);
@@ -35,7 +44,7 @@ void rcv_message_handler(byte message_id, byte src_face, byte* payload) {
     }
   }
 
-  displayColor = YELLOW;
+  setColorOnFace(CYAN, src_face);
 
   // Silence unused variable warnings.
   (void)message_id;
@@ -49,10 +58,13 @@ byte fwd_message_handler(byte message_id, byte src_face, byte dst_face,
         BLINKBIOS_ABEND_VECTOR(1);
       }
     }
+
+    setColorOnFace(CYAN, dst_face);
+  } else {
+    setColorOnFace(ORANGE, dst_face);
   }
 
   (void)src_face;
-  (void)dst_face;
 
   return MESSAGE_PAYLOAD_BYTES;
 }
@@ -71,7 +83,7 @@ void rcv_reply_handler(byte message_id, byte src_face, const byte* payload) {
     }
   }
 
-  displayColor = CYAN;
+  setColorOnFace(OFF, src_face);
 }
 
 byte fwd_reply_handler(byte message_id, byte dst_face, byte* payload) {
@@ -82,18 +94,16 @@ byte fwd_reply_handler(byte message_id, byte dst_face, byte* payload) {
     // Reset local sum.
     sum = 1;
 
-    displayColor = BLUE;
-
     for (byte i = 1; i < MESSAGE_PAYLOAD_BYTES; ++i) {
       if (payload[i] != 0) {
         BLINKBIOS_ABEND_VECTOR(3);
       }
     }
-
-    return MESSAGE_PAYLOAD_BYTES;
   }
 
-  displayColor = MAGENTA;
+  if (dst_face != FACE_COUNT) {
+    setColorOnFace(OFF, dst_face);
+  }
 
   return MESSAGE_PAYLOAD_BYTES;
 }
@@ -117,19 +127,15 @@ bool reported_blinks = false;
 void loop() {
   broadcast::manager::Process();
 
-  setColor(displayColor);
-
   if (buttonSingleClicked()) {
     reported_blinks = false;
     if (!broadcast::manager::Send(&count_blinks)) {
-      displayColor = RED;
+      setColor(RED);
     }
   }
 
   broadcast::Message result;
   if (!broadcast::manager::Receive(&result)) return;
-
-  displayColor = GREEN;
 
   LOGF("Number of blinks (counted): ");
   LOGLN(result.payload[0]);
@@ -138,7 +144,7 @@ void loop() {
 
   report_blinks.payload[0] = result.payload[0];
   if (!broadcast::manager::Send(&report_blinks)) {
-    displayColor = RED;
+    setColor(RED);
   }
 
   reported_blinks = true;
