@@ -36,7 +36,7 @@ static void send_reply(broadcast::Message *reply) {
 
   byte len = MESSAGE_DATA_BYTES - 1;
   if (fwd_reply_handler_ != nullptr) {
-    len = fwd_reply_handler_(reply->header.id, reply->payload);
+    len = fwd_reply_handler_(reply->header.id, parent_face_, reply->payload);
   }
 
   // Should never fail.
@@ -53,7 +53,7 @@ void maybe_send_reply_or_set_result(Message *message) {
       // We do not have a parent, so surface the result here.
       if (fwd_reply_handler_ != nullptr) {
         // We can ignore the return value here as it is irrelevant.
-        fwd_reply_handler_(message->header.id, message->payload);
+        fwd_reply_handler_(message->header.id, parent_face_, message->payload);
       }
 
       result_ = message;
@@ -95,15 +95,6 @@ static void broadcast_message(broadcast::Message *message) {
 
     SET_BIT(sent_faces_, f);
   }
-
-  if (message->header.is_fire_and_forget) {
-    parent_face_ = FACE_COUNT;
-    sent_faces_ = 0;
-
-    return;
-  }
-
-  maybe_send_reply_or_set_result(message);
 }
 
 void Setup(ReceiveMessageHandler rcv_message_handler,
@@ -162,51 +153,55 @@ void Process() {
         // We already sent to this face, so this is a loop. Mark face as not
         // sent.
         UNSET_BIT(sent_faces_, f);
+      } else {
+        if (message->header.value == last_message_header_.value) {
+          // We got another message identical to the last one we processed after
+          // we got replies from all faces. This is a late propagation message
+          // so we can not simply ignore if it is not a fire-and-forget message
+          // and have to tell the sender not to wait on us (by forcing a loop).
+          if (!message->header.is_fire_and_forget) {
+            // We can send a single byte back with our header as we just want
+            // the peer to stop waiting on us.
 
-        maybe_send_reply_or_set_result(message);
+            // Should never fail.
+            sendDatagramOnFace((const byte *)message, 1, f);
+          }
 
-        continue;
-      }
-
-      if (message->header.value == last_message_header_.value) {
-        // We got another message identical to the last one we processed after
-        // we got replies from all faces. This is a late propagation message so
-        // we can not simply ignore if it is not a fire-and-forget message and
-        // have to tell the sender not to wait on us (by forcing a loop).
-        if (!message->header.is_fire_and_forget) {
-          // We can send a single byte back with our header as we just want the
-          // peer to stop waiting on us.
-
-          // Should never fail.
-          sendDatagramOnFace((const byte *)message, 1, f);
+          continue;
         }
 
-        continue;
+        // Set our parent face.
+        parent_face_ = f;
+
+        last_message_header_ = message->header;
+
+        if (rcv_message_handler_ != nullptr) {
+          rcv_message_handler_(message->header.id, f, message->payload);
+        }
+
+        // Broadcast message.
+        broadcast_message(message);
+
+        if (message->header.is_fire_and_forget) {
+          // Fire and forget message. Reset everything but last_message_header_.
+          parent_face_ = FACE_COUNT;
+          sent_faces_ = 0;
+
+          continue;
+        }
       }
-
-      // Set our parent face.
-      parent_face_ = f;
-
-      last_message_header_ = message->header;
-
-      if (rcv_message_handler_ != nullptr) {
-        rcv_message_handler_(message->header.id, message->payload);
-      }
-
-      // Broadcast message.
-      broadcast_message(message);
     } else {
       // Got a reply.
 
       if (rcv_reply_handler_ != nullptr) {
-        rcv_reply_handler_(message->header.id, message->payload);
+        rcv_reply_handler_(message->header.id, f, message->payload);
       }
 
       // Mark face as not pending anymore.
       UNSET_BIT(sent_faces_, f);
-
-      maybe_send_reply_or_set_result(message);
     }
+
+    maybe_send_reply_or_set_result(message);
   }
 }
 

@@ -11,9 +11,11 @@ namespace manager {
 // as it reaches a Blink. It is always called once per message that arrives and
 // any changes in the payload will be seen by upstream Blinks (unless modified
 // by a ForwardMessageHandler. See below). The message_id parameter can be used
-// to differentiate between messages so specific code can be executed. This is
-// also called for fire-and-forget messages.
-typedef void (*ReceiveMessageHandler)(byte message_id, byte *payload);
+// to differentiate between messages so specific code can be executed. The
+// src_face parameter is the face the message arrived on. This is also called
+// for fire-and-forget messages.
+typedef void (*ReceiveMessageHandler)(byte message_id, byte src_face,
+                                      byte *payload);
 
 // Prototype for functions that want to change the payload of a message just
 // before it is forwarded to the next Blink. This is called once per connected
@@ -35,18 +37,22 @@ typedef byte (*ForwardMessageHandler)(byte message_id, byte src_face,
 // it reaches a Blink. It is always called once per reply and as there are
 // possibly multiple replies arriving, payload is read-only. The message_id
 // parameter can be used to differentiate between messages so specific code can
-// be executed. This is never called for fire-and-forget messages.
-typedef void (*ReceiveReplyHandler)(byte message_id, const byte *payload);
+// be executed. The src_face parameter is the face the reply arrived on. This is
+// never called for fire-and-forget messages.
+typedef void (*ReceiveReplyHandler)(byte message_id, byte src_face,
+                                    const byte *payload);
 
 // Prototype for functions that want to change the payload of a reply just
 // before it is sent back to the parent Blink. It will be called only once after
 // all replies have been processed so its main function is to  make sense of all
 // the replies and set the payload to something meaningful. The message_id
 // parameter can be used to differentiate between different messages so specific
-// code can be executed. This is never called for fire-and-forget messages.
+// code can be executed. The dst_face parameter is the face the reply will be
+// forwarded to. This is never called for fire-and-forget messages.
 // Implementations should return the actual reply payload size (which might be
 // smaller than MESSAGE_PAYLOAD_BYTES).
-typedef byte (*ForwardReplyHandler)(byte message_id, byte *payload);
+typedef byte (*ForwardReplyHandler)(byte message_id, byte dst_face,
+                                    byte *payload);
 
 // Configures the message manager with the given handlers.
 void Setup(ReceiveMessageHandler rcv_message_handler,

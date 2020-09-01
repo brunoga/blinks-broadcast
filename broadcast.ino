@@ -15,7 +15,7 @@ Color displayColor = OFF;
 
 byte blinks_count = 0;
 
-void rcv_message_handler(byte message_id, byte* payload) {
+void rcv_message_handler(byte message_id, byte src_face, byte* payload) {
   if (message_id == MESSAGE_REPORT_BLINKS_COUNT) {
     blinks_count = *payload;
 
@@ -59,7 +59,7 @@ byte fwd_message_handler(byte message_id, byte src_face, byte dst_face,
 
 byte sum = 1;
 
-void rcv_reply_handler(byte message_id, const byte* payload) {
+void rcv_reply_handler(byte message_id, byte src_face, const byte* payload) {
   if (message_id == MESSAGE_COUNT_BLINKS) {
     // Add the amount we just got from a neighbor to our local sum.
     sum += payload[0];
@@ -74,7 +74,7 @@ void rcv_reply_handler(byte message_id, const byte* payload) {
   displayColor = CYAN;
 }
 
-byte fwd_reply_handler(byte message_id, byte* payload) {
+byte fwd_reply_handler(byte message_id, byte dst_face, byte* payload) {
   if (message_id == MESSAGE_COUNT_BLINKS) {
     // All faces reported. Set payload to our sum.
     payload[0] = sum;
