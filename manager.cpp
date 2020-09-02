@@ -218,6 +218,12 @@ bool Send(broadcast::Message *message) {
 
   if (message == nullptr) return false;
 
+  if (pending_send()) {
+    // There are currently pending transfers in progress so sending would fail
+    // silently if we tried to continue.
+    return false;
+  }
+
   message->header.sequence = (last_message_header_.sequence % 7) + 1;
 
   last_message_header_ = message->header;
