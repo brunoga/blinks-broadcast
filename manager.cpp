@@ -214,7 +214,7 @@ void Process() {
 }
 
 bool Send(broadcast::Message *message) {
-  if (sent_faces_ != 0) return false;
+  if (sent_faces_ != 0 && !message->header.is_fire_and_forget) return false;
 
   if (message == nullptr) return false;
 
