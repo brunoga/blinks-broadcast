@@ -216,8 +216,6 @@ void Process() {
 bool Send(broadcast::Message *message) {
   if (sent_faces_ != 0 && !message->header.is_fire_and_forget) return false;
 
-  if (message == nullptr) return false;
-
   if (pending_send()) {
     // There are currently pending transfers in progress so sending would fail
     // silently if we tried to continue.
