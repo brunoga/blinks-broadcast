@@ -123,29 +123,46 @@ void setup() {
 }
 
 bool reported_blinks = false;
+byte step = 0;
+broadcast::Message result;
+byte count = 0;
 
 void loop() {
   broadcast::manager::Process();
 
   if (buttonSingleClicked()) {
-    reported_blinks = false;
-    if (!broadcast::manager::Send(&count_blinks)) {
-      setColor(RED);
+    step = 1;
+    count = 1;
+  }
+
+  switch (step) {
+    case 0:
+      return;
+    case 1:
+      if (!broadcast::manager::Send(&count_blinks)) return;
+      break;
+    case 2:
+      if (!broadcast::manager::Receive(&result)) return;
+      break;
+    case 3:
+      LOGF("Number of blinks (counted): ");
+      LOGLN(result.payload[0]);
+      break;
+    case 4:
+      report_blinks.payload[0] = result.payload[0];
+      if (!broadcast::manager::Send(&report_blinks)) return;
+      break;
+  }
+
+  step++;
+
+  if (step > 4) {
+    count++;
+    if (count > 3) {
+      step = 0;
+      count = 0;
+    } else {
+      step = 1;
     }
   }
-
-  broadcast::Message result;
-  if (!broadcast::manager::Receive(&result)) return;
-
-  LOGF("Number of blinks (counted): ");
-  LOGLN(result.payload[0]);
-
-  if (reported_blinks) return;
-
-  report_blinks.payload[0] = result.payload[0];
-  if (!broadcast::manager::Send(&report_blinks)) {
-    setColor(RED);
-  }
-
-  reported_blinks = true;
 }

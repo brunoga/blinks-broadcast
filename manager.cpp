@@ -6,6 +6,7 @@
 #include "bits.h"
 #include "debug.h"
 #include "message.h"
+#include "message_tracker.h"
 
 #ifndef BGA_CUSTOM_BLINKLIB
 #error "This code requires BGA's Custom Blinklib"
@@ -22,8 +23,6 @@ static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 
 static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_;
-
-static MessageHeader last_message_header_;
 
 static Message *result_;
 
@@ -100,7 +99,7 @@ static void broadcast_message(broadcast::Message *message) {
   }
 
   if (message->header.is_fire_and_forget) {
-    // Fire and forget message. Reset everything but last_message_header_.
+    // Fire and forget message. Reset everything relevant.
     parent_face_ = FACE_COUNT;
     sent_faces_ = 0;
   }
@@ -157,8 +156,13 @@ void Process() {
     broadcast::Message *message = (broadcast::Message *)rcv_datagram;
 
     if (!message->header.is_reply) {
+      // We allow a fire and forget message to reset state unless it is a
+      // message we already saw (so this would be a fire and forget loop, not an
+      // original message).
+      bool seen_fire_and_forget = message->header.is_fire_and_forget &&
+                                  message::tracker::Tracked(message->header);
       // Got a message.
-      if (IS_BIT_SET(sent_faces_, f)) {
+      if (IS_BIT_SET(sent_faces_, f) && !seen_fire_and_forget) {
         // We already sent to this face, so this is a loop. Mark face as not
         // sent.
         UNSET_BIT(sent_faces_, f);
@@ -166,7 +170,7 @@ void Process() {
         // Call receive handler to take action on loop if needed.
         rcv_message_handler_(message->header.id, f, nullptr, true);
       } else {
-        if (message->header.value == last_message_header_.value) {
+        if (message::tracker::Tracked(message->header)) {
           // We got another message identical to the last one we processed after
           // we got replies from all faces. This is a late propagation message
           // so we can not simply ignore if it is not a fire-and-forget message
@@ -189,7 +193,7 @@ void Process() {
         // Set our parent face.
         parent_face_ = f;
 
-        last_message_header_ = message->header;
+        message::tracker::Track(message->header);
 
         if (rcv_message_handler_ != nullptr) {
           rcv_message_handler_(message->header.id, f, message->payload, false);
@@ -222,9 +226,9 @@ bool Send(broadcast::Message *message) {
     return false;
   }
 
-  message->header.sequence = (last_message_header_.sequence % 7) + 1;
-
-  last_message_header_ = message->header;
+  // Setup tracking for this message.
+  message->header.sequence = (message::tracker::LastSequence() % 7) + 1;
+  message::tracker::Track(message->header);
 
   broadcast_message(message);
 
