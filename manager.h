@@ -80,8 +80,7 @@ bool Receive(broadcast::Message *result);
 
 // Returns true if we are still waiting for replies for a message in progress.
 // This can be used to prevent other messages being sent before we complete the
-// current work. Returns true if we are still waiting for replies for a message
-// in progress.
+// current work.
 bool Processing();
 
 }  // namespace manager
