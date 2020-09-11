@@ -1,6 +1,6 @@
 #include "message_tracker.h"
 
-#define MESSAGE_TRACKER_NUM_FIRE_AND_FORGET 3
+#define MESSAGE_TRACKER_NUM_FIRE_AND_FORGET 4
 
 namespace broadcast {
 
