@@ -1,6 +1,10 @@
 #include "message_tracker.h"
 
-#define MESSAGE_TRACKER_NUM_FIRE_AND_FORGET 4
+// TODO(bga): Increasing this to 4 triggers a bug that shows up if during the
+// setup state you try to confirm an invalid board, then fix it and confirm
+// again. Later after selecting an origin, one can not select the target.
+// Investigate why.
+#define MESSAGE_TRACKER_NUM_FIRE_AND_FORGET 3
 
 namespace broadcast {
 
