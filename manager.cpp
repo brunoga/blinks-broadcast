@@ -33,7 +33,7 @@ static void send_reply(broadcast::Message *reply) {
   reply->header.is_reply = true;
   message::ClearPayload(reply);
 
-  byte len = MESSAGE_DATA_BYTES - 1;
+  byte len = MESSAGE_PAYLOAD_BYTES;
   if (fwd_reply_handler_ != nullptr) {
     len = fwd_reply_handler_(reply->header.id, parent_face_, reply->payload);
   }
@@ -86,7 +86,7 @@ static void broadcast_message(broadcast::Message *message) {
     broadcast::Message fwd_message;
     memcpy(&fwd_message, message, MESSAGE_DATA_BYTES);
 
-    byte len = MESSAGE_DATA_BYTES - 1;
+    byte len = MESSAGE_PAYLOAD_BYTES;
     if (fwd_message_handler_ != nullptr) {
       len = fwd_message_handler_(fwd_message.header.id, parent_face_, f,
                                  fwd_message.payload);
@@ -218,6 +218,7 @@ void Process() {
 }
 
 bool Send(broadcast::Message *message) {
+  // TODO(bga): Revisit this check.
   if (sent_faces_ != 0 && !message->header.is_fire_and_forget) return false;
 
   if (pending_send()) {
