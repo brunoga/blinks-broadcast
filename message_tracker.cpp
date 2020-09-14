@@ -1,10 +1,7 @@
 #include "message_tracker.h"
 
-// TODO(bga): Increasing this to 4 triggers a bug that shows up if during the
-// setup state you try to confirm an invalid board, then fix it and confirm
-// again. Later after selecting an origin, one can not select the target.
-// Investigate why.
-#define MESSAGE_TRACKER_NUM_FIRE_AND_FORGET 3
+// Must be at most one less than the maximum sequence number (currently 7).
+#define MESSAGE_TRACKER_NUM_TRACKED 6
 
 namespace broadcast {
 
@@ -12,40 +9,27 @@ namespace message {
 
 namespace tracker {
 
-static MessageHeader tracked_message_header_;
-
-static MessageHeader
-    tracked_fire_and_forget_header_[MESSAGE_TRACKER_NUM_FIRE_AND_FORGET];
-static byte tracked_fire_and_forget_header_index_;
+static MessageHeader tracked_message_header_[MESSAGE_TRACKER_NUM_TRACKED];
+static byte tracked_message_header_index_;
 
 static byte last_sequence_;
 
 void Track(broadcast::MessageHeader header) {
-  if (header.is_fire_and_forget) {
-    tracked_fire_and_forget_header_[tracked_fire_and_forget_header_index_] =
-        header;
-    tracked_fire_and_forget_header_index_ =
-        (tracked_fire_and_forget_header_index_ + 1) %
-        MESSAGE_TRACKER_NUM_FIRE_AND_FORGET;
-  } else {
-    tracked_message_header_ = header;
-  }
+  tracked_message_header_[tracked_message_header_index_] = header;
+  tracked_message_header_index_ =
+      (tracked_message_header_index_ + 1) % MESSAGE_TRACKER_NUM_TRACKED;
 
   last_sequence_ = header.sequence;
 }
 
 bool Tracked(broadcast::MessageHeader header) {
-  if (header.is_fire_and_forget) {
-    for (byte i = 0; i < MESSAGE_TRACKER_NUM_FIRE_AND_FORGET; ++i) {
-      if (tracked_fire_and_forget_header_[i].value == header.value) {
-        return true;
-      }
+  for (byte i = 0; i < MESSAGE_TRACKER_NUM_TRACKED; ++i) {
+    if (tracked_message_header_[i].as_byte == header.as_byte) {
+      return true;
     }
-
-    return false;
   }
 
-  return tracked_message_header_.value == header.value;
+  return false;
 }
 
 byte LastSequence() { return last_sequence_; }
