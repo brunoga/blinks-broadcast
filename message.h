@@ -28,13 +28,13 @@ namespace broadcast {
 
 union MessageHeader {
   struct {
-    bool is_reply : 1;
     bool is_fire_and_forget : 1;
-    byte id : 3;
+    bool is_reply : 1;
     byte sequence : 3;
+    byte id : 3;
   };
 
-  byte value;
+  byte as_byte;
 };
 
 struct Message {
