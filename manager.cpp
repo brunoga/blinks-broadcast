@@ -39,7 +39,8 @@ static void send_reply(broadcast::Message *reply) {
   }
 
   // Should never fail.
-  sendDatagramOnFace((const byte *)reply, len + 1, parent_face_);
+  sendDatagramOnFace((const byte *)reply, len + MESSAGE_HEADER_BYTES,
+                     parent_face_);
 
   // Reset parent face.
   parent_face_ = FACE_COUNT;
@@ -93,7 +94,8 @@ static void broadcast_message(broadcast::Message *message) {
     };
 
     // Should never fail.
-    sendDatagramOnFace((const byte *)&fwd_message, len + 1, f);
+    sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
+                       f);
 
     SET_BIT(sent_faces_, f);
   }
@@ -168,13 +170,16 @@ void Process() {
         UNSET_BIT(sent_faces_, f);
 
         // Call receive handler to take action on loop if needed.
-        rcv_message_handler_(message->header.id, f, nullptr, true);
+        if (rcv_message_handler_ != nullptr) {
+          rcv_message_handler_(message->header.id, f, nullptr, true);
+        }
       } else {
         if (message::tracker::Tracked(message->header)) {
-          // We got another message identical to the last one we processed after
-          // we got replies from all faces. This is a late propagation message
-          // so we can not simply ignore if it is not a fire-and-forget message
-          // and have to tell the sender not to wait on us (by forcing a loop).
+          // We got another message identical to a previous one we processed
+          // after we got replies from all faces. This is a late propagation
+          // message so we can not simply ignore if it is not a fire-and-forget
+          // message and have to tell the sender not to wait on us (by forcing a
+          // loop).
           if (!message->header.is_fire_and_forget) {
             // We can send a single byte back with our header as we just want
             // the peer to stop waiting on us.
@@ -184,7 +189,9 @@ void Process() {
           } else {
             // Fire-and-forget message loops simply mean a Blink got the same
             // message more than once.
-            rcv_message_handler_(message->header.id, f, nullptr, true);
+            if (rcv_message_handler_ != nullptr) {
+              rcv_message_handler_(message->header.id, f, nullptr, true);
+            }
           }
 
           continue;
