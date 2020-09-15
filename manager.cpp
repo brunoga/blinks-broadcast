@@ -148,7 +148,6 @@ void Process() {
     }
 
     const byte *rcv_datagram = getDatagramOnFace(f);
-    markDatagramReadOnFace(f);
 
     // We are removing the constness here but this is fine in this case and it
     // is worth to avoid copies. Also, we might receive a message that is
