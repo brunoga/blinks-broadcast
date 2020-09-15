@@ -157,15 +157,10 @@ void Process() {
     broadcast::Message *message = (broadcast::Message *)rcv_datagram;
 
     if (!message->header.is_reply) {
-      // We allow a fire and forget message to reset state unless it is a
-      // message we already saw (so this would be a fire and forget loop, not an
-      // original message).
-      bool seen_fire_and_forget = message->header.is_fire_and_forget &&
-                                  message::tracker::Tracked(message->header);
       // Got a message.
-      if (IS_BIT_SET(sent_faces_, f) && !seen_fire_and_forget) {
-        // We already sent to this face, so this is a loop. Mark face as not
-        // sent.
+      if (IS_BIT_SET(sent_faces_, f) && !message->header.is_fire_and_forget) {
+        // We already sent to this face, so this is a non fire-and-forget loop.
+	// Mark face as not sent.
         UNSET_BIT(sent_faces_, f);
 
         // Call receive handler to take action on loop if needed.

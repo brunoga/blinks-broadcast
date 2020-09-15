@@ -22,7 +22,7 @@ void Track(broadcast::MessageHeader header) {
   last_sequence_ = header.sequence;
 }
 
-bool Tracked(broadcast::MessageHeader header) {
+bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
   for (byte i = 0; i < MESSAGE_TRACKER_NUM_TRACKED; ++i) {
     if (tracked_message_header_[i].as_byte == header.as_byte) {
       return true;
