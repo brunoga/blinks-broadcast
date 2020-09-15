@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "bits.h"
-#include "debug.h"
 #include "message.h"
 #include "message_tracker.h"
 
