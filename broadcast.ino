@@ -1,9 +1,9 @@
 #include <shared/blinkbios_shared_functions.h>
 #include <string.h>
 
-#include "debug.h"
 #include "manager.h"
 #include "message.h"
+#include "src/blinks-debug/debug.h"
 
 #define MESSAGE_COUNT_BLINKS 1
 #define MESSAGE_REPORT_BLINKS_COUNT 2

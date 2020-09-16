@@ -1,0 +1,3 @@
+[submodule "src/blinks-debug"]
+	path = src/blinks-debug
+	url = https://github.com/brunoga/blinks-debug
