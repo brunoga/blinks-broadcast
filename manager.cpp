@@ -3,9 +3,9 @@
 #include <blinklib.h>
 #include <string.h>
 
-#include "bits.h"
 #include "message.h"
 #include "message_tracker.h"
+#include "src/blinks-support/bits.h"
 
 #ifndef BGA_CUSTOM_BLINKLIB
 #error "This code requires BGA's Custom Blinklib"
@@ -159,7 +159,7 @@ void Process() {
       // Got a message.
       if (IS_BIT_SET(sent_faces_, f) && !message->header.is_fire_and_forget) {
         // We already sent to this face, so this is a non fire-and-forget loop.
-	// Mark face as not sent.
+        // Mark face as not sent.
         UNSET_BIT(sent_faces_, f);
 
         // Call receive handler to take action on loop if needed.
