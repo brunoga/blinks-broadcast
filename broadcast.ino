@@ -1,6 +1,7 @@
 #include <shared/blinkbios_shared_functions.h>
 #include <string.h>
 
+#include "debug.h"
 #include "manager.h"
 #include "message.h"
 
