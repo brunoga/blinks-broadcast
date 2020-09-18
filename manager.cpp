@@ -160,15 +160,17 @@ void Process() {
 
     if (!message->header.is_reply) {
       // Got a message.
+
+      // Keep track of detectec loops.
+      bool loop = false;
+
       if (IS_BIT_SET(sent_faces_, f) && !message->header.is_fire_and_forget) {
         // We already sent to this face, so this is a non fire-and-forget loop.
         // Mark face as not sent.
         UNSET_BIT(sent_faces_, f);
 
-        // Call receive handler to take action on loop if needed.
-        if (rcv_message_handler_ != nullptr) {
-          rcv_message_handler_(message->header.id, f, nullptr, true);
-        }
+        // Record loop.
+        loop = true;
       } else {
         if (message::tracker::Tracked(message->header)) {
           // We got another message identical to a previous one we processed
@@ -182,12 +184,20 @@ void Process() {
 
             // Should never fail.
             sendDatagramOnFace((const byte *)message, 1, f);
+
+            continue;
           } else {
             // Fire-and-forget message loops simply mean a Blink got the same
-            // message more than once.
-            if (rcv_message_handler_ != nullptr) {
-              rcv_message_handler_(message->header.id, f, nullptr, true);
-            }
+            // message more than once. Record it.
+            loop = true;
+          }
+        }
+
+        if (loop) {
+          // We detected a message loop. Call the receive handler to take care
+          // of it.
+          if (rcv_message_handler_ != nullptr) {
+            rcv_message_handler_(message->header.id, f, nullptr, true);
           }
 
           continue;
