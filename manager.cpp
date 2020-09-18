@@ -192,17 +192,15 @@ void Process() {
             loop = true;
           }
         }
+      }
 
-        if (loop) {
-          // We detected a message loop. Call the receive handler to take care
-          // of it.
-          if (rcv_message_handler_ != nullptr) {
-            rcv_message_handler_(message->header.id, f, nullptr, true);
-          }
-
-          continue;
+      if (loop) {
+        // We detected a message loop. Call the receive handler to take care
+        // of it.
+        if (rcv_message_handler_ != nullptr) {
+          rcv_message_handler_(message->header.id, f, nullptr, true);
         }
-
+      } else {
         // Set our parent face.
         parent_face_ = f;
 
