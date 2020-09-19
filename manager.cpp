@@ -67,7 +67,7 @@ void maybe_send_reply_or_set_result(Message *message) {
   }
 }
 
-static void broadcast_message(broadcast::Message *message) {
+static void broadcast_message(byte src_face, broadcast::Message *message) {
   // Broadcast message to all connected blinks (except the parent one).
 
   FOREACH_FACE(f) {
@@ -78,7 +78,7 @@ static void broadcast_message(broadcast::Message *message) {
       continue;
     }
 
-    if (f == parent_face_) {
+    if (f == src_face) {
       // Do not send message back to parent.
       continue;
     }
@@ -88,7 +88,7 @@ static void broadcast_message(broadcast::Message *message) {
 
     byte len = MESSAGE_PAYLOAD_BYTES;
     if (fwd_message_handler_ != nullptr) {
-      len = fwd_message_handler_(fwd_message.header.id, parent_face_, f,
+      len = fwd_message_handler_(fwd_message.header.id, src_face, f,
                                  fwd_message.payload);
     };
 
@@ -96,13 +96,7 @@ static void broadcast_message(broadcast::Message *message) {
     sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
                        f);
 
-    SET_BIT(sent_faces_, f);
-  }
-
-  if (message->header.is_fire_and_forget) {
-    // Fire and forget message. Reset everything relevant.
-    parent_face_ = FACE_COUNT;
-    sent_faces_ = 0;
+    if (!message->header.is_fire_and_forget) SET_BIT(sent_faces_, f);
   }
 }
 
@@ -124,6 +118,77 @@ static bool pending_send() {
   return false;
 }
 
+static bool handle_message(byte f, Message *message) {
+  // Are we already tracking this message?
+  bool tracked = message::tracker::Tracked(message->header);
+
+  // Keep track of detected loops.
+  bool loop = false;
+
+  if (message->header.is_fire_and_forget) {
+    if (tracked) {
+      // We are already tracking this message. This is a fire-and-forget message
+      // loop.
+      loop = true;
+    }
+  } else {
+    if (IS_BIT_SET(sent_faces_, f)) {
+      // We already sent to this face, so this is a non fire-and-forget loop.
+      // Mark face as not sent.
+      UNSET_BIT(sent_faces_, f);
+
+      // Record loop.
+      loop = true;
+    } else {
+      if (tracked) {
+        // We got a message that we are already tracking after we got replies
+        // from all faces. This is a late propagation message so we can not
+        // simply ignore if it and have to tell the sender not to wait on us (by
+        // forcing a loop). We can send only the header back as we just want the
+        // peer to stop waiting on us. Note this is *NOT* a loop.
+
+        // Should never fail.
+        sendDatagramOnFace((const byte *)message, MESSAGE_HEADER_BYTES, f);
+
+        return false;
+      }
+
+      // Set our parent face.
+      parent_face_ = f;
+    }
+  }
+
+  if (loop) {
+    // We detected a message loop. Call the receive handler to take care
+    // of it.
+    if (rcv_message_handler_ != nullptr) {
+      rcv_message_handler_(message->header.id, f, nullptr, true);
+    }
+
+    return true;
+  }
+
+  message::tracker::Track(message->header);
+
+  if (rcv_message_handler_ != nullptr) {
+    rcv_message_handler_(message->header.id, f, message->payload, false);
+  }
+
+  // Broadcast message.
+  broadcast_message(f, message);
+
+  return true;
+}
+
+static void handle_reply(byte f, Message *reply) {
+  if (rcv_reply_handler_ != nullptr) {
+    rcv_reply_handler_(reply->header.id, f, reply->payload);
+  }
+
+  // Mark face as not pending anymore.
+  UNSET_BIT(sent_faces_, f);
+}
+
 void Process() {
   // Invalidate result as it most likelly is not the same data as when it was
   // received.
@@ -140,13 +205,12 @@ void Process() {
   // Receive any pending data on all faces.
 
   FOREACH_FACE(f) {
-    byte len = getDatagramLengthOnFace(f);
-
-    if (len == 0) {
+    if (getDatagramLengthOnFace(f) == 0) {
       // No data available. Nothing to do.
       continue;
     }
 
+    // Receive data.
     const byte *rcv_datagram = getDatagramOnFace(f);
 
     // We are removing the constness here but this is fine in this case and it
@@ -155,70 +219,12 @@ void Process() {
     // right size.
     broadcast::Message *message = (broadcast::Message *)rcv_datagram;
 
-    if (!message->header.is_reply) {
-      // Got a message.
-
-      // Keep track of detectec loops.
-      bool loop = false;
-
-      if (IS_BIT_SET(sent_faces_, f) && !message->header.is_fire_and_forget) {
-        // We already sent to this face, so this is a non fire-and-forget loop.
-        // Mark face as not sent.
-        UNSET_BIT(sent_faces_, f);
-
-        // Record loop.
-        loop = true;
-      } else {
-        if (message::tracker::Tracked(message->header)) {
-          // We got another message identical to a previous one we processed
-          // after we got replies from all faces. This is a late propagation
-          // message so we can not simply ignore if it is not a fire-and-forget
-          // message and have to tell the sender not to wait on us (by forcing a
-          // loop).
-          if (!message->header.is_fire_and_forget) {
-            // We can send a single byte back with our header as we just want
-            // the peer to stop waiting on us.
-
-            // Should never fail.
-            sendDatagramOnFace((const byte *)message, 1, f);
-
-            continue;
-          } else {
-            // Fire-and-forget message loops simply mean a Blink got the same
-            // message more than once. Record it.
-            loop = true;
-          }
-        }
-      }
-
-      if (loop) {
-        // We detected a message loop. Call the receive handler to take care
-        // of it.
-        if (rcv_message_handler_ != nullptr) {
-          rcv_message_handler_(message->header.id, f, nullptr, true);
-        }
-      } else {
-        // Set our parent face.
-        parent_face_ = f;
-
-        message::tracker::Track(message->header);
-
-        if (rcv_message_handler_ != nullptr) {
-          rcv_message_handler_(message->header.id, f, message->payload, false);
-        }
-
-        // Broadcast message.
-        broadcast_message(message);
-      }
-    } else {
+    if (message->header.is_reply) {
       // Got a reply.
-
-      if (rcv_reply_handler_ != nullptr) {
-        rcv_reply_handler_(message->header.id, f, message->payload);
-      }
-
-      // Mark face as not pending anymore.
-      UNSET_BIT(sent_faces_, f);
+      handle_reply(f, message);
+    } else {
+      // Got a message.
+      if (!handle_message(f, message)) continue;
     }
 
     maybe_send_reply_or_set_result(message);
@@ -239,7 +245,7 @@ bool Send(broadcast::Message *message) {
   message->header.sequence = (message::tracker::LastSequence() % 7) + 1;
   message::tracker::Track(message->header);
 
-  broadcast_message(message);
+  broadcast_message(FACE_COUNT, message);
 
   return true;
 }
