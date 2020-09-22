@@ -242,7 +242,7 @@ bool Send(broadcast::Message *message) {
   }
 
   // Setup tracking for this message.
-  message->header.sequence = (message::tracker::LastSequence() + 1) % 8;
+  message->header.sequence = message::tracker::LastSequence() + 1;
   message::tracker::Track(message->header);
 
   broadcast_message(FACE_COUNT, message);
