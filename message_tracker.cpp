@@ -1,7 +1,8 @@
 #include "message_tracker.h"
 
-// Must be at most one less than the maximum sequence number (currently 7).
-#define MESSAGE_TRACKER_NUM_TRACKED 6
+// Must be at most one less than the number of different sequence numbers
+// (currently 8).
+#define MESSAGE_TRACKER_NUM_TRACKED 7
 
 namespace broadcast {
 
