@@ -13,7 +13,7 @@ namespace tracker {
 static MessageHeader tracked_message_header_[MESSAGE_TRACKER_NUM_TRACKED];
 static byte tracked_message_header_index_;
 
-static byte last_sequence_;
+static byte last_sequence_ = 7;
 
 void Track(broadcast::MessageHeader header) {
   tracked_message_header_[tracked_message_header_index_] = header;
