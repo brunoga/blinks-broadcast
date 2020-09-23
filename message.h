@@ -3,12 +3,11 @@
 
 #include <blinklib.h>
 
-#include "payload_bytes.h"
-
-// Set this to the number of bytes you need to send as payload. Anything up to
-// 15 bytes is fair game.
-#ifndef MESSAGE_PAYLOAD_BYTES
-#error You must define MESSAGE_PAYLOAD_BYTES.
+#if __has_include(<broadcast_config.h>)
+#include <broadcast_config.h>
+#else
+// Default message payload size is the maximum size.
+#define MESSAGE_PAYLOAD_BYTES 15
 #endif
 
 // This should not be changed.
