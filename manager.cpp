@@ -111,14 +111,6 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
   fwd_reply_handler_ = fwd_reply_handler;
 }
 
-static bool pending_send() {
-  FOREACH_FACE(face) {
-    if (isDatagramPendingOnFace(face)) return true;
-  }
-
-  return false;
-}
-
 static bool handle_message(byte f, Message *message) {
   // Are we already tracking this message?
   bool tracked = message::tracker::Tracked(message->header);
@@ -195,7 +187,7 @@ void Process() {
   // received.
   result_ = nullptr;
 
-  if (pending_send()) {
+  if (isDatagramPendingOnAnyFace()) {
     // We wait until any pending messages are cleared before we move on with
     // processing. This guarantees that no sendDatagramOnFace() calls after
     // this will fail (assuming we do not try to send more than one time in a
@@ -236,7 +228,7 @@ bool Send(broadcast::Message *message) {
   // TODO(bga): Revisit this check.
   if (sent_faces_ != 0 && !message->header.is_fire_and_forget) return false;
 
-  if (pending_send()) {
+  if (isDatagramPendingOnAnyFace()) {
     // There are currently pending transfers in progress so sending would fail
     // silently if we tried to continue.
     return false;
