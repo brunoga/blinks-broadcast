@@ -20,8 +20,8 @@
 #error MESSAGE_DATA_BYTES must not be greater than DATAGRAM_BYTES.
 #endif
 
-// Message id 0 is reserved to indicate an invalid message.
-#define MESSAGE_INVALID 0
+// Message id 0 is used for fire and forget reset messages.
+#define MESSAGE_RESET 0
 
 namespace broadcast {
 

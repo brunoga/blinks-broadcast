@@ -97,7 +97,13 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
                        f);
 
-    if (!message->header.is_fire_and_forget) SET_BIT(sent_faces_, f);
+    if (!message->header.is_fire_and_forget) {
+      SET_BIT(sent_faces_, f);
+    } else if (message->header.id == MESSAGE_RESET) {
+      // This is a reset message. Clear relevant data.
+      sent_faces_ = 0;
+      parent_face_ = FACE_COUNT;
+    }
   }
 }
 
