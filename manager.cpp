@@ -3,9 +3,9 @@
 #include <blinklib.h>
 #include <string.h>
 
+#include "bits.h"
 #include "message.h"
 #include "message_tracker.h"
-#include "src/blinks-support/bits.h"
 
 #ifndef BGA_CUSTOM_BLINKLIB
 #error \
