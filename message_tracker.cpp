@@ -25,7 +25,7 @@ void Track(broadcast::MessageHeader header) {
 
 void Track(const broadcast::Message* message) { Track(message->header); }
 
-bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
+bool Tracked(broadcast::MessageHeader header) {
   for (byte i = 0; i < MESSAGE_TRACKER_NUM_TRACKED; ++i) {
     if (tracked_message_header_[i].as_byte == header.as_byte) {
       return true;
