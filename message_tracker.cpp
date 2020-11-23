@@ -23,6 +23,8 @@ void Track(broadcast::MessageHeader header) {
   last_sequence_ = header.sequence;
 }
 
+void Track(const broadcast::Message* message) { Track(message->header); }
+
 bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
   for (byte i = 0; i < MESSAGE_TRACKER_NUM_TRACKED; ++i) {
     if (tracked_message_header_[i].as_byte == header.as_byte) {
@@ -31,6 +33,10 @@ bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
   }
 
   return false;
+}
+
+bool Tracked(const broadcast::Message* message) {
+  return Tracked(message->header);
 }
 
 byte LastSequence() { return last_sequence_; }
