@@ -119,7 +119,7 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
 
 static bool handle_message(byte f, Message *message) {
   // Are we already tracking this message?
-  bool tracked = message::tracker::Tracked(message);
+  bool tracked = message::tracker::Tracked(message->header);
 
   // Keep track of detected loops.
   bool loop = false;
@@ -167,7 +167,7 @@ static bool handle_message(byte f, Message *message) {
     return true;
   }
 
-  message::tracker::Track(message);
+  message::tracker::Track(message->header);
 
   if (rcv_message_handler_ != nullptr) {
     rcv_message_handler_(message->header.id, f, message->payload, false);
@@ -242,7 +242,7 @@ bool Send(broadcast::Message *message) {
 
   // Setup tracking for this message.
   message->header.sequence = message::tracker::LastSequence() + 1;
-  message::tracker::Track(message);
+  message::tracker::Track(message->header);
 
   broadcast_message(FACE_COUNT, message);
 
