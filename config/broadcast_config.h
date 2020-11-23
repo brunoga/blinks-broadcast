@@ -3,6 +3,8 @@
 
 // Maximum allowed payload size.
 #define BROADCAST_MESSAGE_PAYLOAD_BYTES 15
-#define BROADCAST_ENABLE_EXTERNAL_TRACKER
+
+// Uncomment to enable external message tracker support.
+//#define BROADCAST_ENABLE_EXTERNAL_TRACKER
 
 #endif
