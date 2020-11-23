@@ -2,6 +2,7 @@
 #define BROADCAST_CONFIG_H_
 
 // Maximum allowed payload size.
-#define MESSAGE_PAYLOAD_BYTES 15
+#define BROADCAST_MESSAGE_PAYLOAD_BYTES 15
+#define BROADCAST_ENABLE_EXTERNAL_TRACKER
 
 #endif
