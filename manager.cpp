@@ -24,46 +24,42 @@ static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_;
 
-static Message *result_;
+static MessageHeader pending_clear_face_headers_[FACE_COUNT];
 
-static void send_reply(broadcast::Message *reply) {
-  // Send a reply to our parent.
+static Message result_;
+static bool has_result_;
 
-  // Set message as reply and clear payload.
-  reply->header.is_reply = true;
-  message::ClearPayload(reply);
-
-  byte len = MESSAGE_PAYLOAD_BYTES;
-  if (fwd_reply_handler_ != nullptr) {
-    len = fwd_reply_handler_(reply->header.id, parent_face_, reply->payload);
-  }
-
-  // Should never fail.
-  sendDatagramOnFace((const byte *)reply, len + MESSAGE_HEADER_BYTES,
-                     parent_face_);
-
-  // Reset parent face.
-  parent_face_ = FACE_COUNT;
-}
-
-void maybe_send_reply_or_set_result(Message *message) {
-  // Nothing to do for fire and forget messages.
-  if (message->header.is_fire_and_forget) return;
-
+static void maybe_send_reply_or_set_result(Message *message) {
   if (sent_faces_ == 0) {
     // We are not waiting on any faces anymore.
+    Message *fwd_reply = message;
     if (parent_face_ == FACE_COUNT) {
-      // We do not have a parent, so surface the result here.
-      if (fwd_reply_handler_ != nullptr) {
-        // We can ignore the return value here as it is irrelevant.
-        fwd_reply_handler_(message->header.id, parent_face_, message->payload);
-      }
+      // No parent. Set our local result and mark it as available.
+      fwd_reply = &result_;
+      has_result_ = true;
+    }
 
-      result_ = message;
-    } else {
+    message::Initialize(fwd_reply, message->header.id, false);
+    message::ClearPayload(fwd_reply);
+
+    message->header.is_reply = true;
+
+    byte len = MESSAGE_PAYLOAD_BYTES;
+    if (fwd_reply_handler_ != nullptr) {
+      len = fwd_reply_handler_(fwd_reply->header.id, parent_face_,
+                               fwd_reply->payload);
+    }
+
+    if (parent_face_ != FACE_COUNT) {
       // This was the last face we were waiting on and we have a parent.
       // Send reply back.
-      send_reply(message);
+
+      // Should never fail.
+      sendDatagramOnFace((const byte *)fwd_reply, len + MESSAGE_HEADER_BYTES,
+                         parent_face_);
+
+      // Reset parent face.
+      parent_face_ = FACE_COUNT;
     }
   }
 }
@@ -74,8 +70,9 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
   FOREACH_FACE(f) {
     if (isValueReceivedOnFaceExpired(f)) {
       // No one seem to be connected to this face. Not necessarily true but
-      // there is not much we can do here. Even if a face is connected but show
-      // as expired, the way messages are routed should make up for it anyway.
+      // there is not much we can do here. Even if a face is connected but
+      // show as expired, the way messages are routed should make up for it
+      // anyway.
       continue;
     }
 
@@ -117,116 +114,171 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
   fwd_reply_handler_ = fwd_reply_handler;
 }
 
-static bool handle_message(byte f, Message *message) {
-  // Are we already tracking this message?
-  bool tracked = message::tracker::Tracked(message->header);
+static bool handle_reply(byte face, Message *reply) {
+  // Mark face as not pending anymore.
+  UNSET_BIT(sent_faces_, face);
 
-  // Keep track of detected loops.
-  bool loop = false;
+  if ((sent_faces_ == 0) && (parent_face_ != FACE_COUNT) &&
+      isDatagramPendingOnFace(face)) {
+    // Processing this message would result on us forwarding a reply to the
+    // parent face, which would fail as there is already a datagram pending to
+    // be sent on it. Reset the sent faces bit and return without consuming
+    // the message.
+    SET_BIT(sent_faces_, face);
 
-  if (message->header.is_fire_and_forget) {
-    if (tracked) {
-      // We are already tracking this message. This is a fire-and-forget message
-      // loop.
-      loop = true;
-    }
-  } else {
-    if (IS_BIT_SET(sent_faces_, f)) {
-      // We already sent to this face, so this is a non fire-and-forget loop.
-      // Mark face as not sent.
-      UNSET_BIT(sent_faces_, f);
-
-      // Record loop.
-      loop = true;
-    } else {
-      if (tracked) {
-        // We got a message that we are already tracking after we got replies
-        // from all faces. This is a late propagation message so we can not
-        // simply ignore if it and have to tell the sender not to wait on us (by
-        // forcing a loop). We can send only the header back as we just want the
-        // peer to stop waiting on us. Note this is *NOT* a loop.
-
-        // Should never fail.
-        sendDatagramOnFace((const byte *)message, MESSAGE_HEADER_BYTES, f);
-
-        return false;
-      }
-
-      // Set our parent face.
-      parent_face_ = f;
-    }
+    return false;
   }
 
-  if (loop) {
+  if (rcv_reply_handler_ != nullptr) {
+    rcv_reply_handler_(reply->header.id, face, reply->payload);
+  }
+
+  maybe_send_reply_or_set_result(reply);
+
+  return true;
+}
+
+static bool handle_fire_and_forget(byte face, Message *message, bool tracked) {
+  if (tracked) {
     // We detected a message loop. Call the receive handler to take care
     // of it.
     if (rcv_message_handler_ != nullptr) {
-      rcv_message_handler_(message->header.id, f, nullptr, true);
+      rcv_message_handler_(message->header.id, face, nullptr, true);
     }
 
     return true;
   }
 
+  // Check if all the faces we are going to send to are available.
+  FOREACH_FACE(out_face) {
+    if (out_face == face) continue;
+
+    if (isDatagramPendingOnFace(out_face)) {
+      // At least one is not. Do not consume message and try again later.
+      return false;
+    }
+  }
+
+  // We are clear to go!
   message::tracker::Track(message->header);
 
   if (rcv_message_handler_ != nullptr) {
-    rcv_message_handler_(message->header.id, f, message->payload, false);
+    rcv_message_handler_(message->header.id, face, message->payload, false);
   }
 
   // Broadcast message.
-  broadcast_message(f, message);
+  broadcast_message(face, message);
 
   return true;
 }
 
-static void handle_reply(byte f, Message *reply) {
-  if (rcv_reply_handler_ != nullptr) {
-    rcv_reply_handler_(reply->header.id, f, reply->payload);
+static bool handle_message(byte face, Message *message, bool tracked) {
+  if (tracked) {
+    if (IS_BIT_SET(sent_faces_, face)) {
+      // We already sent to this face, so this is a non fire-and-forget loop.
+      // Mark face as not sent.
+      UNSET_BIT(sent_faces_, face);
+
+      if (rcv_message_handler_ != nullptr) {
+        rcv_message_handler_(message->header.id, face, nullptr, true);
+      }
+    } else {
+      // Indicate we need to clear this face and do it when possible. This
+      // avoids sending a message right now and tying up a face.
+      pending_clear_face_headers_[face] = message->header;
+
+      return true;
+    }
+  } else {
+    // Check if all the faces we are going to send to are available.
+    FOREACH_FACE(out_face) {
+      if (out_face == face) continue;
+
+      if (isDatagramPendingOnFace(out_face)) {
+        // At least one is not. Do not consume message and try again later.
+        return false;
+      }
+    }
+
+    parent_face_ = face;
+
+    // We are clear to go!
+    message::tracker::Track(message->header);
+
+    if (rcv_message_handler_ != nullptr) {
+      rcv_message_handler_(message->header.id, face, message->payload, false);
+    }
+
+    // Broadcast message.
+    broadcast_message(face, message);
   }
 
-  // Mark face as not pending anymore.
-  UNSET_BIT(sent_faces_, f);
+  maybe_send_reply_or_set_result(message);
+
+  return true;
 }
 
 void Process() {
-  // Invalidate result as it most likelly is not the same data as when it was
-  // received.
-  result_ = nullptr;
-
-  if (isDatagramPendingOnAnyFace()) {
-    // We wait until any pending messages are cleared before we move on with
-    // processing. This guarantees that no sendDatagramOnFace() calls after
-    // this will fail (assuming we do not try to send more than one time in a
-    // single face, that is, which this code never does currently).
-    return;
-  }
-
-  // Receive any pending data on all faces.
-
-  FOREACH_FACE(f) {
-    if (getDatagramLengthOnFace(f) == 0) {
-      // No data available. Nothing to do.
+  // We might be dealing with multiple messages propagating here so we need to
+  // try very hard to make progress in processing messages or things may stall
+  // (as we always try to wait on all local message to be sent before trying
+  // to process anything). The general idea here is that several messages we
+  // receive (usually most of them) might be absorbed locally (replies other
+  // than the last one we are waiting for and message loops) so the strategy
+  // will be to simply try to process everything and only consume messages we
+  // processed. This is the best we can do and although it mitigates issues,
+  // there can always be pathological cases where we might stall (say, 6
+  // different new messages arriving at the same loop iteration in all faces).
+  // Ideally we would have enought memory for a message queue, but we do not
+  // have this luxury.
+  FOREACH_FACE(face) {
+    if (getDatagramLengthOnFace(face) == 0) {
+      // No datagram waiting on this face. Move to the next one.
       continue;
     }
 
-    // Receive data.
-    const byte *rcv_datagram = getDatagramOnFace(f);
+    // Get a pointer to the available data. Notice this does not actually
+    // consume it. We will do it when we are sure it has been handled. We
+    // cheat a bit and cast directly to a message. Note that the payload on
+    // the message we received might be smaller than MESSAGE_PAYLOAD_SIZE. but
+    // this does not matter because the underlying receive buffer will always
+    // be big enough so no illegal memory access should happen.
+    broadcast::Message *message = (broadcast::Message *)getDatagramOnFace(face);
 
-    // We are removing the constness here but this is fine in this case and it
-    // is worth to avoid copies. Also, we might receive a message that is
-    // smaller than Message but it is ok as the underlying buffer is of the
-    // right size.
-    broadcast::Message *message = (broadcast::Message *)rcv_datagram;
+    bool message_consumed = false;
 
+    // Now we try to consume the message. We do this in the simplest way
+    // possible by procerssing the message and if we reach a point where it
+    // would result in messages being sent, we try to send it. If sending
+    // fails, we do not consume the message. If it does not fail or we do not
+    // send, we consume it.
     if (message->header.is_reply) {
-      // Got a reply.
-      handle_reply(f, message);
+      // Reply message.
+      message_consumed = handle_reply(face, message);
     } else {
-      // Got a message.
-      if (!handle_message(f, message)) continue;
+      bool tracked = message::tracker::Tracked(message->header);
+
+      if (message->header.is_fire_and_forget) {
+        // Fire and forget message.
+        message_consumed = handle_fire_and_forget(face, message, tracked);
+      } else {
+        // Normal message.
+        message_consumed = handle_message(face, message, tracked);
+      }
     }
 
-    maybe_send_reply_or_set_result(message);
+    if (message_consumed) {
+      markDatagramReadOnFace(face);
+    }
+  }
+
+  // Try to clear pending faces.
+  FOREACH_FACE(face) {
+    if (pending_clear_face_headers_[face].as_byte != 0) {
+      if (sendDatagramOnFace(&pending_clear_face_headers_[face], 1, face)) {
+        pending_clear_face_headers_[face].as_byte = 0;
+      }
+    }
   }
 }
 
@@ -250,10 +302,12 @@ bool Send(broadcast::Message *message) {
 }
 
 bool Receive(broadcast::Message *reply) {
-  if (result_ == nullptr) return false;
+  if (!has_result_) return false;
+
+  has_result_ = false;
 
   if (reply != nullptr) {
-    memcpy(reply, result_, MESSAGE_DATA_BYTES);
+    memcpy(reply, &result_, MESSAGE_DATA_BYTES);
   }
 
   return true;
