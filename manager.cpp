@@ -26,8 +26,6 @@ static byte sent_faces_;
 
 static Message *result_;
 
-static MessageHeader pending_fwd_reply_header_;
-
 static void send_reply(broadcast::Message *reply) {
   // Send a reply to our parent.
 
@@ -40,16 +38,9 @@ static void send_reply(broadcast::Message *reply) {
     len = fwd_reply_handler_(reply->header.id, parent_face_, reply->payload);
   }
 
-  if (!sendDatagramOnFace((const byte *)reply,
-                          len + BROADCAST_MESSAGE_HEADER_BYTES, parent_face_)) {
-    // We could not send the datagram, which means the forward reply handler
-    // sent a message by itself. Record the header so we can send it back as
-    // soon as possible (so the original message must not have a payload as it
-    // will not be propagated).
-    pending_fwd_reply_header_ = reply->header;
-
-    return;
-  }
+  // Should never fail.
+  sendDatagramOnFace((const byte *)reply, len + BROADCAST_MESSAGE_HEADER_BYTES,
+                     parent_face_);
 
   // Reset parent face.
   parent_face_ = FACE_COUNT;
@@ -208,17 +199,6 @@ void Process() {
     // processing. This guarantees that no sendDatagramOnFace() calls after
     // this will fail (assuming we do not try to send more than one time in a
     // single face, that is, which this code never does currently).
-    return;
-  }
-
-  if (pending_fwd_reply_header_.as_byte != 0) {
-    // Sending pending forward reply header.
-    sendDatagramOnFace(&pending_fwd_reply_header_,
-                       BROADCAST_MESSAGE_HEADER_BYTES, parent_face_);
-
-    pending_fwd_reply_header_.as_byte = 0;
-    parent_face_ = FACE_COUNT;
-
     return;
   }
 
