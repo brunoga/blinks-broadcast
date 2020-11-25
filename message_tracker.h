@@ -10,11 +10,7 @@ namespace message {
 namespace tracker {
 
 void Track(broadcast::MessageHeader header);
-void Track(const broadcast::Message* message);
-
 bool Tracked(broadcast::MessageHeader header);
-bool Tracked(const broadcast::Message* message);
-
 byte LastSequence();
 
 }  // namespace tracker
