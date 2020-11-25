@@ -1,6 +1,7 @@
 #include "manager.h"
 
 #include <blinklib.h>
+#include <shared/blinkbios_shared_functions.h>
 #include <string.h>
 
 #include "bits.h"
@@ -26,28 +27,19 @@ static byte sent_faces_;
 
 static MessageHeader pending_clear_face_headers_[FACE_COUNT];
 
-static Message result_;
-static bool has_result_;
+static Message *result_;
 
-static void maybe_send_reply_or_set_result(Message *message) {
+// Return true if we generated a result (as opposed to not doing anything or
+// forwarding a reply back to the parent).
+static void maybe_fwd_reply_or_set_result(Message *message) {
   if (sent_faces_ == 0) {
-    // We are not waiting on any faces anymore.
-    Message *fwd_reply = message;
-    if (parent_face_ == FACE_COUNT) {
-      // No parent. Set our local result and mark it as available.
-      fwd_reply = &result_;
-      has_result_ = true;
-    }
-
-    message::Initialize(fwd_reply, message->header.id, false);
-    message::ClearPayload(fwd_reply);
-
     message->header.is_reply = true;
+    message::ClearPayload(message);
 
     byte len = MESSAGE_PAYLOAD_BYTES;
     if (fwd_reply_handler_ != nullptr) {
-      len = fwd_reply_handler_(fwd_reply->header.id, parent_face_,
-                               fwd_reply->payload);
+      len = fwd_reply_handler_(message->header.id, parent_face_,
+                               message->payload);
     }
 
     if (parent_face_ != FACE_COUNT) {
@@ -55,11 +47,16 @@ static void maybe_send_reply_or_set_result(Message *message) {
       // Send reply back.
 
       // Should never fail.
-      sendDatagramOnFace((const byte *)fwd_reply, len + MESSAGE_HEADER_BYTES,
+      sendDatagramOnFace((const byte *)message, len + MESSAGE_HEADER_BYTES,
                          parent_face_);
 
       // Reset parent face.
       parent_face_ = FACE_COUNT;
+    } else {
+      // Generated a result. Note that the code will mark the datagram as read.
+      // This is fine though as a result is only supposed to be valid in the
+      // same loop() iteration it was generated.
+      result_ = message;
     }
   }
 }
@@ -91,8 +88,10 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     };
 
     // Should never fail.
-    sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
-                       f);
+    if (!sendDatagramOnFace((const byte *)&fwd_message,
+                            len + MESSAGE_HEADER_BYTES, f)) {
+      BLINKBIOS_ABEND_VECTOR(2);
+    }
 
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
@@ -104,36 +103,62 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
   }
 }
 
-void Setup(ReceiveMessageHandler rcv_message_handler,
-           ForwardMessageHandler fwd_message_handler,
-           ReceiveReplyHandler rcv_reply_handler,
-           ForwardReplyHandler fwd_reply_handler) {
-  rcv_message_handler_ = rcv_message_handler;
-  fwd_message_handler_ = fwd_message_handler;
-  rcv_reply_handler_ = rcv_reply_handler;
-  fwd_reply_handler_ = fwd_reply_handler;
-}
-
-static bool handle_reply(byte face, Message *reply) {
-  // Mark face as not pending anymore.
+static bool would_forward_reply_and_fail(byte face) {
+  // Processing the message on this face would clear its sent_face_ bit.
   UNSET_BIT(sent_faces_, face);
 
   if ((sent_faces_ == 0) && (parent_face_ != FACE_COUNT) &&
-      isDatagramPendingOnFace(face)) {
-    // Processing this message would result on us forwarding a reply to the
-    // parent face, which would fail as there is already a datagram pending to
-    // be sent on it. Reset the sent faces bit and return without consuming
-    // the message.
+      isDatagramPendingOnFace(parent_face_)) {
+    // Processing this message would result in us forwarding a reply to the
+    // parent face, which would fail as there is already a datagram pending
+    // to be sent on it. Reset the sent faces bit and let the caller know about
+    // that.
     SET_BIT(sent_faces_, face);
 
+    return true;
+  }
+
+  // No reply would be forwarded or it would not fail.
+  return false;
+}
+
+static bool would_broadcast_fail(byte src_face) {
+  // Check if all faces we would broadcast to arer available.
+  FOREACH_FACE(dst_face) {
+    if (isValueReceivedOnFaceExpired(dst_face)) {
+      // No Blink reporting on this face. Skip it.
+      continue;
+    }
+
+    if (dst_face == src_face) {
+      // We do not broadcast to the parent face. Skip it.
+      continue;
+    }
+
+    if (isDatagramPendingOnFace(dst_face)) {
+      // We would broadcast to this face but there is a datagram pending on it.
+      // We would fail if we tried to broadcast.
+      return true;
+    }
+  }
+
+  // All faces are available.
+  return false;
+}
+
+static bool handle_reply(byte face, Message *reply) {
+  if (would_forward_reply_and_fail(face)) {
+    // Do not even try processing this message.
     return false;
   }
+
+  // Note the call above already cleared the sent_faces_ bit for face.
 
   if (rcv_reply_handler_ != nullptr) {
     rcv_reply_handler_(reply->header.id, face, reply->payload);
   }
 
-  maybe_send_reply_or_set_result(reply);
+  maybe_fwd_reply_or_set_result(reply);
 
   return true;
 }
@@ -149,14 +174,11 @@ static bool handle_fire_and_forget(byte face, Message *message, bool tracked) {
     return true;
   }
 
-  // Check if all the faces we are going to send to are available.
-  FOREACH_FACE(out_face) {
-    if (out_face == face) continue;
-
-    if (isDatagramPendingOnFace(out_face)) {
-      // At least one is not. Do not consume message and try again later.
-      return false;
-    }
+  if (would_broadcast_fail(face)) {
+    // Do not try to process this message and broadcast it. Note that this might
+    // prevent us from making progress and creating a deadlock but there is only
+    // so much we can do about this.
+    return false;
   }
 
   // We are clear to go!
@@ -175,9 +197,12 @@ static bool handle_fire_and_forget(byte face, Message *message, bool tracked) {
 static bool handle_message(byte face, Message *message, bool tracked) {
   if (tracked) {
     if (IS_BIT_SET(sent_faces_, face)) {
-      // We already sent to this face, so this is a non fire-and-forget loop.
-      // Mark face as not sent.
-      UNSET_BIT(sent_faces_, face);
+      if (would_forward_reply_and_fail(face)) {
+        // Do not even try processing this message.
+        return false;
+      }
+
+      // Note the call above already cleared the sent_faces_ bit for face.
 
       if (rcv_message_handler_ != nullptr) {
         rcv_message_handler_(message->header.id, face, nullptr, true);
@@ -190,14 +215,11 @@ static bool handle_message(byte face, Message *message, bool tracked) {
       return true;
     }
   } else {
-    // Check if all the faces we are going to send to are available.
-    FOREACH_FACE(out_face) {
-      if (out_face == face) continue;
-
-      if (isDatagramPendingOnFace(out_face)) {
-        // At least one is not. Do not consume message and try again later.
-        return false;
-      }
+    if (would_broadcast_fail(face)) {
+      // Do not try to process this message and broadcast it. Note that this
+      // might prevent us from making progress and creating a deadlock but there
+      // is only so much we can do about this.
+      return false;
     }
 
     parent_face_ = face;
@@ -213,12 +235,25 @@ static bool handle_message(byte face, Message *message, bool tracked) {
     broadcast_message(face, message);
   }
 
-  maybe_send_reply_or_set_result(message);
+  maybe_fwd_reply_or_set_result(message);
 
   return true;
 }
 
+void Setup(ReceiveMessageHandler rcv_message_handler,
+           ForwardMessageHandler fwd_message_handler,
+           ReceiveReplyHandler rcv_reply_handler,
+           ForwardReplyHandler fwd_reply_handler) {
+  rcv_message_handler_ = rcv_message_handler;
+  fwd_message_handler_ = fwd_message_handler;
+  rcv_reply_handler_ = rcv_reply_handler;
+  fwd_reply_handler_ = fwd_reply_handler;
+}
+
 void Process() {
+  // Results are only valid in the same loop iteration they were generated.
+  result_ = nullptr;
+
   // We might be dealing with multiple messages propagating here so we need to
   // try very hard to make progress in processing messages or things may stall
   // (as we always try to wait on all local message to be sent before trying
@@ -302,12 +337,10 @@ bool Send(broadcast::Message *message) {
 }
 
 bool Receive(broadcast::Message *reply) {
-  if (!has_result_) return false;
-
-  has_result_ = false;
+  if (result_ == nullptr) return false;
 
   if (reply != nullptr) {
-    memcpy(reply, &result_, MESSAGE_DATA_BYTES);
+    memcpy(reply, result_, MESSAGE_DATA_BYTES);
   }
 
   return true;
