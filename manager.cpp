@@ -33,13 +33,13 @@ static void send_reply(broadcast::Message *reply) {
   reply->header.is_reply = true;
   message::ClearPayload(reply);
 
-  byte len = BROADCAST_MESSAGE_PAYLOAD_BYTES;
+  byte len = MESSAGE_PAYLOAD_BYTES;
   if (fwd_reply_handler_ != nullptr) {
     len = fwd_reply_handler_(reply->header.id, parent_face_, reply->payload);
   }
 
   // Should never fail.
-  sendDatagramOnFace((const byte *)reply, len + BROADCAST_MESSAGE_HEADER_BYTES,
+  sendDatagramOnFace((const byte *)reply, len + MESSAGE_HEADER_BYTES,
                      parent_face_);
 
   // Reset parent face.
@@ -85,17 +85,17 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     }
 
     broadcast::Message fwd_message;
-    memcpy(&fwd_message, message, BROADCAST_MESSAGE_DATA_BYTES);
+    memcpy(&fwd_message, message, MESSAGE_DATA_BYTES);
 
-    byte len = BROADCAST_MESSAGE_PAYLOAD_BYTES;
+    byte len = MESSAGE_PAYLOAD_BYTES;
     if (fwd_message_handler_ != nullptr) {
       len = fwd_message_handler_(fwd_message.header.id, src_face, f,
                                  fwd_message.payload);
     };
 
     // Should never fail.
-    sendDatagramOnFace((const byte *)&fwd_message,
-                       len + BROADCAST_MESSAGE_HEADER_BYTES, f);
+    sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
+                       f);
 
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
@@ -119,7 +119,7 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
 
 static bool handle_message(byte f, Message *message) {
   // Are we already tracking this message?
-  bool tracked = message::tracker::Tracked(message);
+  bool tracked = message::tracker::Tracked(message->header);
 
   // Keep track of detected loops.
   bool loop = false;
@@ -147,8 +147,7 @@ static bool handle_message(byte f, Message *message) {
         // peer to stop waiting on us. Note this is *NOT* a loop.
 
         // Should never fail.
-        sendDatagramOnFace((const byte *)message,
-                           BROADCAST_MESSAGE_HEADER_BYTES, f);
+        sendDatagramOnFace((const byte *)message, MESSAGE_HEADER_BYTES, f);
 
         return false;
       }
@@ -168,7 +167,7 @@ static bool handle_message(byte f, Message *message) {
     return true;
   }
 
-  message::tracker::Track(message);
+  message::tracker::Track(message->header);
 
   if (rcv_message_handler_ != nullptr) {
     rcv_message_handler_(message->header.id, f, message->payload, false);
@@ -243,7 +242,7 @@ bool Send(broadcast::Message *message) {
 
   // Setup tracking for this message.
   message->header.sequence = message::tracker::LastSequence() + 1;
-  message::tracker::Track(message);
+  message::tracker::Track(message->header);
 
   broadcast_message(FACE_COUNT, message);
 
@@ -254,7 +253,7 @@ bool Receive(broadcast::Message *reply) {
   if (result_ == nullptr) return false;
 
   if (reply != nullptr) {
-    memcpy(reply, result_, BROADCAST_MESSAGE_DATA_BYTES);
+    memcpy(reply, result_, MESSAGE_DATA_BYTES);
   }
 
   return true;

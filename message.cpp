@@ -17,7 +17,7 @@ void Initialize(Message* message, byte id, bool is_fire_and_forget) {
 }
 
 void ClearPayload(Message* message) {
-  memset(message->payload, 0, BROADCAST_MESSAGE_PAYLOAD_BYTES);
+  memset(message->payload, 0, MESSAGE_PAYLOAD_BYTES);
 }
 
 }  // namespace message
