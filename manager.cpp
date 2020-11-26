@@ -29,32 +29,32 @@ static Message *result_;
 // Return true if we generated a result (as opposed to not doing anything or
 // forwarding a reply back to the parent).
 static void maybe_fwd_reply_or_set_result(Message *message) {
-  if (sent_faces_ == 0) {
-    message->header.is_reply = true;
-    message::ClearPayload(message);
+  if (sent_faces_ != 0) return;
 
-    byte len = MESSAGE_PAYLOAD_BYTES;
-    if (fwd_reply_handler_ != nullptr) {
-      len = fwd_reply_handler_(message->header.id, parent_face_,
-                               message->payload);
-    }
+  message->header.is_reply = true;
+  message::ClearPayload(message);
 
-    if (parent_face_ != FACE_COUNT) {
-      // This was the last face we were waiting on and we have a parent.
-      // Send reply back.
+  byte len = MESSAGE_PAYLOAD_BYTES;
+  if (fwd_reply_handler_ != nullptr) {
+    len =
+        fwd_reply_handler_(message->header.id, parent_face_, message->payload);
+  }
 
-      // Should never fail.
-      sendDatagramOnFace((const byte *)message, len + MESSAGE_HEADER_BYTES,
-                         parent_face_);
+  if (parent_face_ != FACE_COUNT) {
+    // This was the last face we were waiting on and we have a parent.
+    // Send reply back.
 
-      // Reset parent face.
-      parent_face_ = FACE_COUNT;
-    } else {
-      // Generated a result. Note that the code will mark the datagram as read.
-      // This is fine though as a result is only supposed to be valid in the
-      // same loop() iteration it was generated.
-      result_ = message;
-    }
+    // Should never fail.
+    sendDatagramOnFace((const byte *)message, len + MESSAGE_HEADER_BYTES,
+                       parent_face_);
+
+    // Reset parent face.
+    parent_face_ = FACE_COUNT;
+  } else {
+    // Generated a result. Note that the code will mark the datagram as read.
+    // This is fine though as a result is only supposed to be valid in the
+    // same loop() iteration it was generated.
+    result_ = message;
   }
 }
 
@@ -90,11 +90,15 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
 
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
+
+      // We do not need to set parent_face_ on every loop iteration, but this
+      // actually saves us some storage space.
+      parent_face_ = src_face;
     }
   }
 
   if (message->header.id == MESSAGE_RESET) {
-    // This is a reset message. Clear relevant data.
+    // This was a reset message. Clear relevant data.
     sent_faces_ = 0;
     parent_face_ = FACE_COUNT;
   }
@@ -120,11 +124,11 @@ static bool would_forward_reply_and_fail(byte face) {
 }
 
 static bool would_broadcast_fail(byte src_face) {
-  // Check if all faces we would broadcast to are available.
+  // Check if all faces we would broadcast to arer available.
   FOREACH_FACE(dst_face) {
-    // TODO(bga): We might want to check for fac eexpiration here, but it would
-    // cost us 30 bytes to do so (and in most cases, it is not needed). Revisit
-    // if this proves to be a real issue. if
+    // TODO(bga): We might want to check for face expiration here but doing that
+    // results in an extra 32 bytes of storage being used. So we are not doing
+    // it now and will revisit if needed.
 
     if (dst_face == src_face) {
       // We do not broadcast to the parent face. Skip it.
@@ -167,7 +171,7 @@ static bool maybe_broadcast(byte face, Message *message) {
     return false;
   }
 
-  // We are clear to go. Track message.
+  // We are clear to go. Tracked message.
   message::tracker::Track(message->header);
 
   if (rcv_message_handler_ != nullptr) {
@@ -201,19 +205,11 @@ static bool handle_message(byte face, Message *message) {
     if (rcv_message_handler_ != nullptr) {
       rcv_message_handler_(message->header.id, face, nullptr, true);
     }
-
-    if (!message->header.is_fire_and_forget) {
-      maybe_fwd_reply_or_set_result(message);
-    }
-
-    return true;
+  } else {
+    if (!maybe_broadcast(face, message)) return false;
   }
 
-  if (!maybe_broadcast(face, message)) return false;
-
   if (!message->header.is_fire_and_forget) {
-    parent_face_ = face;
-
     maybe_fwd_reply_or_set_result(message);
   }
 
@@ -260,7 +256,7 @@ void Process() {
     // be big enough so no illegal memory access should happen.
     broadcast::Message *message = (broadcast::Message *)getDatagramOnFace(face);
 
-    bool message_consumed = false;
+    bool message_consumed;
 
     // Now we try to consume the message. We do this in the simplest way
     // possible by procerssing the message and if we reach a point where it
@@ -279,7 +275,7 @@ void Process() {
       markDatagramReadOnFace(face);
     }
   }
-}  // namespace manager
+}
 
 bool Send(broadcast::Message *message) {
   // TODO(bga): Revisit this check.

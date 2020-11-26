@@ -14,7 +14,7 @@ static byte tracked_message_header_index_;
 
 static byte last_sequence_ = 7;
 
-void Track(broadcast::MessageHeader header) {
+void __attribute__((noinline)) Track(broadcast::MessageHeader header) {
   tracked_message_header_[tracked_message_header_index_] = header;
   tracked_message_header_index_ =
       (tracked_message_header_index_ + 1) % MESSAGE_TRACKER_NUM_TRACKED;
@@ -22,7 +22,7 @@ void Track(broadcast::MessageHeader header) {
   last_sequence_ = header.sequence;
 }
 
-bool Tracked(broadcast::MessageHeader header) {
+bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
   for (byte i = 0; i < MESSAGE_TRACKER_NUM_TRACKED; ++i) {
     if (tracked_message_header_[i].as_byte == header.as_byte) {
       return true;
