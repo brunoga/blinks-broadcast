@@ -1,7 +1,6 @@
 #include "manager.h"
 
 #include <blinklib.h>
-#include <shared/blinkbios_shared_functions.h>
 #include <string.h>
 
 #include "bits.h"
@@ -25,7 +24,7 @@ static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_;
 
-static MessageHeader pending_clear_face_headers_[FACE_COUNT];
+// static MessageHeader pending_clear_face_headers_[FACE_COUNT];
 
 static Message *result_;
 
@@ -88,18 +87,18 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     };
 
     // Should never fail.
-    if (!sendDatagramOnFace((const byte *)&fwd_message,
-                            len + MESSAGE_HEADER_BYTES, f)) {
-      BLINKBIOS_ABEND_VECTOR(2);
-    }
+    sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
+                       f);
 
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
-    } else if (message->header.id == MESSAGE_RESET) {
-      // This is a reset message. Clear relevant data.
-      sent_faces_ = 0;
-      parent_face_ = FACE_COUNT;
     }
+  }
+
+  if (message->header.id == MESSAGE_RESET) {
+    // This is a reset message. Clear relevant data.
+    sent_faces_ = 0;
+    parent_face_ = FACE_COUNT;
   }
 }
 
@@ -163,17 +162,8 @@ static bool handle_reply(byte face, Message *reply) {
   return true;
 }
 
-static bool handle_fire_and_forget(byte face, Message *message, bool tracked) {
-  if (tracked) {
-    // We detected a message loop. Call the receive handler to take care
-    // of it.
-    if (rcv_message_handler_ != nullptr) {
-      rcv_message_handler_(message->header.id, face, nullptr, true);
-    }
-
-    return true;
-  }
-
+static bool __attribute__((noinline))
+maybe_broadcast(byte face, Message *message) {
   if (would_broadcast_fail(face)) {
     // Do not try to process this message and broadcast it. Note that this might
     // prevent us from making progress and creating a deadlock but there is only
@@ -181,7 +171,7 @@ static bool handle_fire_and_forget(byte face, Message *message, bool tracked) {
     return false;
   }
 
-  // We are clear to go!
+  // We are clear to go. Trqacke message.
   message::tracker::Track(message->header);
 
   if (rcv_message_handler_ != nullptr) {
@@ -194,8 +184,8 @@ static bool handle_fire_and_forget(byte face, Message *message, bool tracked) {
   return true;
 }
 
-static bool handle_message(byte face, Message *message, bool tracked) {
-  if (tracked) {
+static bool handle_tracked_message(byte face, Message *message) {
+  if (!message->header.is_fire_and_forget) {
     if (IS_BIT_SET(sent_faces_, face)) {
       if (would_forward_reply_and_fail(face)) {
         // Do not even try processing this message.
@@ -203,37 +193,33 @@ static bool handle_message(byte face, Message *message, bool tracked) {
       }
 
       // Note the call above already cleared the sent_faces_ bit for face.
-
-      if (rcv_message_handler_ != nullptr) {
-        rcv_message_handler_(message->header.id, face, nullptr, true);
-      }
     } else {
-      // Indicate we need to clear this face and do it when possible. This
-      // avoids sending a message right now and tying up a face.
-      pending_clear_face_headers_[face] = message->header;
-
-      return true;
+      // Late propagation message. Send header back to the other Blink so it
+      // will not wait on us.
+      return sendDatagramOnFace(message, 1, face);
     }
-  } else {
-    if (would_broadcast_fail(face)) {
-      // Do not try to process this message and broadcast it. Note that this
-      // might prevent us from making progress and creating a deadlock but there
-      // is only so much we can do about this.
-      return false;
-    }
-
-    parent_face_ = face;
-
-    // We are clear to go!
-    message::tracker::Track(message->header);
-
-    if (rcv_message_handler_ != nullptr) {
-      rcv_message_handler_(message->header.id, face, message->payload, false);
-    }
-
-    // Broadcast message.
-    broadcast_message(face, message);
   }
+
+  // Call receive message handler to process loop.
+  if (rcv_message_handler_ != nullptr) {
+    rcv_message_handler_(message->header.id, face, nullptr, true);
+  }
+
+  if (!message->header.is_fire_and_forget) {
+    maybe_fwd_reply_or_set_result(message);
+  }
+
+  return true;
+}
+
+static bool handle_fire_and_forget(byte face, Message *message) {
+  return maybe_broadcast(face, message);
+}
+
+static bool handle_message(byte face, Message *message) {
+  if (!maybe_broadcast(face, message)) return false;
+
+  parent_face_ = face;
 
   maybe_fwd_reply_or_set_result(message);
 
@@ -291,14 +277,14 @@ void Process() {
       // Reply message.
       message_consumed = handle_reply(face, message);
     } else {
-      bool tracked = message::tracker::Tracked(message->header);
-
-      if (message->header.is_fire_and_forget) {
+      if (message::tracker::Tracked(message->header)) {
+        message_consumed = handle_tracked_message(face, message);
+      } else if (message->header.is_fire_and_forget) {
         // Fire and forget message.
-        message_consumed = handle_fire_and_forget(face, message, tracked);
+        message_consumed = handle_fire_and_forget(face, message);
       } else {
         // Normal message.
-        message_consumed = handle_message(face, message, tracked);
+        message_consumed = handle_message(face, message);
       }
     }
 
@@ -308,13 +294,13 @@ void Process() {
   }
 
   // Try to clear pending faces.
-  FOREACH_FACE(face) {
-    if (pending_clear_face_headers_[face].as_byte != 0) {
-      if (sendDatagramOnFace(&pending_clear_face_headers_[face], 1, face)) {
-        pending_clear_face_headers_[face].as_byte = 0;
-      }
-    }
-  }
+  // FOREACH_FACE(face) {
+  //  if (pending_clear_face_headers_[face].as_byte != 0) {
+  //    if (sendDatagramOnFace(&pending_clear_face_headers_[face], 1, face)) {
+  //      pending_clear_face_headers_[face].as_byte = 0;
+  //    }
+  //  }
+  //}
 }
 
 bool Send(broadcast::Message *message) {
