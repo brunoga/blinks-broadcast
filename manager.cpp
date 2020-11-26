@@ -24,8 +24,6 @@ static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_;
 
-// static MessageHeader pending_clear_face_headers_[FACE_COUNT];
-
 static Message *result_;
 
 // Return true if we generated a result (as opposed to not doing anything or
@@ -292,15 +290,6 @@ void Process() {
       markDatagramReadOnFace(face);
     }
   }
-
-  // Try to clear pending faces.
-  // FOREACH_FACE(face) {
-  //  if (pending_clear_face_headers_[face].as_byte != 0) {
-  //    if (sendDatagramOnFace(&pending_clear_face_headers_[face], 1, face)) {
-  //      pending_clear_face_headers_[face].as_byte = 0;
-  //    }
-  //  }
-  //}
 }
 
 bool Send(broadcast::Message *message) {
