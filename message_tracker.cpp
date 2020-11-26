@@ -1,8 +1,7 @@
 #include "message_tracker.h"
 
-// Must be at most one less than the number of different sequence numbers
-// (currently 8).
-#define MESSAGE_TRACKER_NUM_TRACKED 7
+// This determines the number of messages that can be in flight without issue.
+#define MESSAGE_TRACKER_NUM_TRACKED 4
 
 namespace broadcast {
 
@@ -23,7 +22,7 @@ void Track(broadcast::MessageHeader header) {
   last_sequence_ = header.sequence;
 }
 
-bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
+bool Tracked(broadcast::MessageHeader header) {
   for (byte i = 0; i < MESSAGE_TRACKER_NUM_TRACKED; ++i) {
     if (tracked_message_header_[i].as_byte == header.as_byte) {
       return true;

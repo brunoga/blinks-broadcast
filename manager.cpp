@@ -120,12 +120,11 @@ static bool would_forward_reply_and_fail(byte face) {
 }
 
 static bool would_broadcast_fail(byte src_face) {
-  // Check if all faces we would broadcast to arer available.
+  // Check if all faces we would broadcast to are available.
   FOREACH_FACE(dst_face) {
-    if (isValueReceivedOnFaceExpired(dst_face)) {
-      // No Blink reporting on this face. Skip it.
-      continue;
-    }
+    // TODO(bga): We might want to check for fac eexpiration here, but it would
+    // cost us 30 bytes to do so (and in most cases, it is not needed). Revisit
+    // if this proves to be a real issue. if
 
     if (dst_face == src_face) {
       // We do not broadcast to the parent face. Skip it.
@@ -160,8 +159,7 @@ static bool handle_reply(byte face, Message *reply) {
   return true;
 }
 
-static bool __attribute__((noinline))
-maybe_broadcast(byte face, Message *message) {
+static bool maybe_broadcast(byte face, Message *message) {
   if (would_broadcast_fail(face)) {
     // Do not try to process this message and broadcast it. Note that this might
     // prevent us from making progress and creating a deadlock but there is only
@@ -169,7 +167,7 @@ maybe_broadcast(byte face, Message *message) {
     return false;
   }
 
-  // We are clear to go. Trqacke message.
+  // We are clear to go. Track message.
   message::tracker::Track(message->header);
 
   if (rcv_message_handler_ != nullptr) {
@@ -182,44 +180,42 @@ maybe_broadcast(byte face, Message *message) {
   return true;
 }
 
-static bool handle_tracked_message(byte face, Message *message) {
-  if (!message->header.is_fire_and_forget) {
-    if (IS_BIT_SET(sent_faces_, face)) {
-      if (would_forward_reply_and_fail(face)) {
-        // Do not even try processing this message.
-        return false;
-      }
-
-      // Note the call above already cleared the sent_faces_ bit for face.
-    } else {
-      // Late propagation message. Send header back to the other Blink so it
-      // will not wait on us.
-      return sendDatagramOnFace(message, 1, face);
-    }
-  }
-
-  // Call receive message handler to process loop.
-  if (rcv_message_handler_ != nullptr) {
-    rcv_message_handler_(message->header.id, face, nullptr, true);
-  }
-
-  if (!message->header.is_fire_and_forget) {
-    maybe_fwd_reply_or_set_result(message);
-  }
-
-  return true;
-}
-
-static bool handle_fire_and_forget(byte face, Message *message) {
-  return maybe_broadcast(face, message);
-}
-
 static bool handle_message(byte face, Message *message) {
+  if (message::tracker::Tracked(message->header)) {
+    if (!message->header.is_fire_and_forget) {
+      if (IS_BIT_SET(sent_faces_, face)) {
+        if (would_forward_reply_and_fail(face)) {
+          // Do not even try processing this message.
+          return false;
+        }
+
+        // Note the call above already cleared the sent_faces_ bit for face.
+      } else {
+        // Late propagation message. Send header back to the other Blink so it
+        // will not wait on us.
+        return sendDatagramOnFace(message, 1, face);
+      }
+    }
+
+    // Call receive message handler to process loop.
+    if (rcv_message_handler_ != nullptr) {
+      rcv_message_handler_(message->header.id, face, nullptr, true);
+    }
+
+    if (!message->header.is_fire_and_forget) {
+      maybe_fwd_reply_or_set_result(message);
+    }
+
+    return true;
+  }
+
   if (!maybe_broadcast(face, message)) return false;
 
-  parent_face_ = face;
+  if (!message->header.is_fire_and_forget) {
+    parent_face_ = face;
 
-  maybe_fwd_reply_or_set_result(message);
+    maybe_fwd_reply_or_set_result(message);
+  }
 
   return true;
 }
@@ -272,25 +268,18 @@ void Process() {
     // fails, we do not consume the message. If it does not fail or we do not
     // send, we consume it.
     if (message->header.is_reply) {
-      // Reply message.
+      // Reply.
       message_consumed = handle_reply(face, message);
     } else {
-      if (message::tracker::Tracked(message->header)) {
-        message_consumed = handle_tracked_message(face, message);
-      } else if (message->header.is_fire_and_forget) {
-        // Fire and forget message.
-        message_consumed = handle_fire_and_forget(face, message);
-      } else {
-        // Normal message.
-        message_consumed = handle_message(face, message);
-      }
+      // Message.
+      message_consumed = handle_message(face, message);
     }
 
     if (message_consumed) {
       markDatagramReadOnFace(face);
     }
   }
-}
+}  // namespace manager
 
 bool Send(broadcast::Message *message) {
   // TODO(bga): Revisit this check.
