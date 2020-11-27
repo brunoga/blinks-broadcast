@@ -260,9 +260,10 @@ void Process() {
 
     // Now we try to consume the message. We do this in the simplest way
     // possible by procerssing the message and if we reach a point where it
-    // would result in messages being sent, we try to send it. If sending
-    // fails, we do not consume the message. If it does not fail or we do not
-    // send, we consume it.
+    // would result in messages being sent, we try to detect this and check
+    // beforehand if sending would fail. If it would, we abort and do not
+    // consume the message. If it would not or no messages would be sent, we
+    // consume it.
     if (message->header.is_reply) {
       // Reply.
       message_consumed = handle_reply(face, message);
