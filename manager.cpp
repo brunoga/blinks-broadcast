@@ -171,10 +171,10 @@ static bool maybe_broadcast(byte face, Message *message) {
     return false;
   }
 
-  // We are clear to go. Tracked message.
+  // We are clear to go. Track message.
   message::tracker::Track(message->header);
 
-  if (rcv_message_handler_ != nullptr) {
+  if (face != FACE_COUNT && rcv_message_handler_ != nullptr) {
     rcv_message_handler_(message->header.id, face, message->payload, false);
   }
 
@@ -278,22 +278,10 @@ void Process() {
 }
 
 bool Send(broadcast::Message *message) {
-  // TODO(bga): Revisit this check.
-  if (sent_faces_ != 0 && !message->header.is_fire_and_forget) return false;
-
-  if (isDatagramPendingOnAnyFace()) {
-    // There are currently pending transfers in progress so sending would fail
-    // silently if we tried to continue.
-    return false;
-  }
-
   // Setup tracking for this message.
   message->header.sequence = message::tracker::LastSequence() + 1;
-  message::tracker::Track(message->header);
 
-  broadcast_message(FACE_COUNT, message);
-
-  return true;
+  return maybe_broadcast(FACE_COUNT, message);
 }
 
 bool Receive(broadcast::Message *reply) {
