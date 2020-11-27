@@ -4,9 +4,12 @@
 #include <string.h>
 
 #include "bits.h"
-#include "handler.h"
 #include "message.h"
 #include "message_tracker.h"
+
+#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
+#include "handler.h"
+#endif
 
 #ifndef BGA_CUSTOM_BLINKLIB
 #error \
@@ -35,7 +38,7 @@ static void maybe_fwd_reply_or_set_result(Message *message) {
   message->header.is_reply = true;
   message::ClearPayload(message);
 
-  byte len = MESSAGE_PAYLOAD_BYTES;
+  byte len = BROADCAST_MESSAGE_PAYLOAD_BYTES;
   if (fwd_reply_handler_ != nullptr) {
     len =
         fwd_reply_handler_(message->header.id, parent_face_, message->payload);
@@ -46,8 +49,8 @@ static void maybe_fwd_reply_or_set_result(Message *message) {
     // Send reply back.
 
     // Should never fail.
-    sendDatagramOnFace((const byte *)message, len + MESSAGE_HEADER_BYTES,
-                       parent_face_);
+    sendDatagramOnFace((const byte *)message,
+                       len + BROADCAST_MESSAGE_HEADER_BYTES, parent_face_);
 
     // Reset parent face.
     parent_face_ = FACE_COUNT;
@@ -77,17 +80,17 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     }
 
     broadcast::Message fwd_message;
-    memcpy(&fwd_message, message, MESSAGE_DATA_BYTES);
+    memcpy(&fwd_message, message, BROADCAST_MESSAGE_DATA_BYTES);
 
-    byte len = MESSAGE_PAYLOAD_BYTES;
+    byte len = BROADCAST_MESSAGE_PAYLOAD_BYTES;
     if (fwd_message_handler_ != nullptr) {
       len = fwd_message_handler_(fwd_message.header.id, src_face, f,
                                  fwd_message.payload);
     };
 
     // Should never fail.
-    sendDatagramOnFace((const byte *)&fwd_message, len + MESSAGE_HEADER_BYTES,
-                       f);
+    sendDatagramOnFace((const byte *)&fwd_message,
+                       len + BROADCAST_MESSAGE_HEADER_BYTES, f);
 
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
@@ -265,10 +268,14 @@ void Process() {
     // beforehand if sending would fail. If it would, we abort and do not
     // consume the message. If it would not or no messages would be sent, we
     // consume it.
+#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
     if (message::handler::Consume(message)) {
       // Message was consumed by external handler.
       message_consumed = true;
     } else if (message->header.is_reply) {
+#else
+    if (message->header.is_reply) {
+#endif
       // Reply.
       message_consumed = handle_reply(face, message);
     } else {
@@ -281,6 +288,7 @@ void Process() {
     }
   }
 
+#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
   // We tried to process all incoming messages. Now check if there is any
   // handler message availabe to propagate.
   Message message;
@@ -291,6 +299,7 @@ void Process() {
       message::handler::Propagated();
     }
   }
+#endif
 }
 
 bool Send(broadcast::Message *message) {
@@ -304,7 +313,7 @@ bool Receive(broadcast::Message *reply) {
   if (result_ == nullptr) return false;
 
   if (reply != nullptr) {
-    memcpy(reply, result_, MESSAGE_DATA_BYTES);
+    memcpy(reply, result_, BROADCAST_MESSAGE_DATA_BYTES);
   }
 
   return true;

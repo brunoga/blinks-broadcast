@@ -38,7 +38,7 @@ void rcv_message_handler(byte message_id, byte src_face, byte* payload,
 
   // We do not need to do anything. Just change our color to
   // note we forwarded a message.
-  for (byte i = 0; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+  for (byte i = 0; i < BROADCAST_MESSAGE_PAYLOAD_BYTES; ++i) {
     if (message_payload_[i] != payload[i]) {
       BLINKBIOS_ABEND_VECTOR(1);
     }
@@ -53,7 +53,7 @@ void rcv_message_handler(byte message_id, byte src_face, byte* payload,
 byte fwd_message_handler(byte message_id, byte src_face, byte dst_face,
                          byte* payload) {
   if (message_id == MESSAGE_COUNT_BLINKS) {
-    for (byte i = 0; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+    for (byte i = 0; i < BROADCAST_MESSAGE_PAYLOAD_BYTES; ++i) {
       if (message_payload_[i] != payload[i]) {
         BLINKBIOS_ABEND_VECTOR(1);
       }
@@ -66,7 +66,7 @@ byte fwd_message_handler(byte message_id, byte src_face, byte dst_face,
 
   (void)src_face;
 
-  return MESSAGE_PAYLOAD_BYTES;
+  return BROADCAST_MESSAGE_PAYLOAD_BYTES;
 }
 
 byte sum = 1;
@@ -76,7 +76,7 @@ void rcv_reply_handler(byte message_id, byte src_face, const byte* payload) {
     // Add the amount we just got from a neighbor to our local sum.
     sum += payload[0];
 
-    for (byte i = 1; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+    for (byte i = 1; i < BROADCAST_MESSAGE_PAYLOAD_BYTES; ++i) {
       if (payload[i] != 0) {
         BLINKBIOS_ABEND_VECTOR(2);
       }
@@ -94,7 +94,7 @@ byte fwd_reply_handler(byte message_id, byte dst_face, byte* payload) {
     // Reset local sum.
     sum = 1;
 
-    for (byte i = 1; i < MESSAGE_PAYLOAD_BYTES; ++i) {
+    for (byte i = 1; i < BROADCAST_MESSAGE_PAYLOAD_BYTES; ++i) {
       if (payload[i] != 0) {
         BLINKBIOS_ABEND_VECTOR(3);
       }
@@ -105,7 +105,7 @@ byte fwd_reply_handler(byte message_id, byte dst_face, byte* payload) {
     setColorOnFace(OFF, dst_face);
   }
 
-  return MESSAGE_PAYLOAD_BYTES;
+  return BROADCAST_MESSAGE_PAYLOAD_BYTES;
 }
 
 broadcast::Message count_blinks;
@@ -113,7 +113,8 @@ broadcast::Message report_blinks;
 
 void setup() {
   broadcast::message::Initialize(&count_blinks, MESSAGE_COUNT_BLINKS, false);
-  memcpy(count_blinks.payload, message_payload_, MESSAGE_PAYLOAD_BYTES);
+  memcpy(count_blinks.payload, message_payload_,
+         BROADCAST_MESSAGE_PAYLOAD_BYTES);
 
   broadcast::message::Initialize(&report_blinks, MESSAGE_REPORT_BLINKS_COUNT,
                                  true);

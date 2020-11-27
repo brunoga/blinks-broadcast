@@ -7,16 +7,17 @@
 #include <broadcast_config.h>
 #else
 // Default message payload size is the maximum size.
-#define MESSAGE_PAYLOAD_BYTES 15
+#define BROADCAST_MESSAGE_PAYLOAD_BYTES 15
 #endif
 
 // This should not be changed.
-#define MESSAGE_HEADER_BYTES 1
+#define BROADCAST_MESSAGE_HEADER_BYTES 1
 
-#define MESSAGE_DATA_BYTES MESSAGE_PAYLOAD_BYTES + MESSAGE_HEADER_BYTES
+#define BROADCAST_MESSAGE_DATA_BYTES \
+  BROADCAST_MESSAGE_PAYLOAD_BYTES + BROADCAST_MESSAGE_HEADER_BYTES
 
 // Make sure we do not try to use more data than we can.
-#if MESSAGE_DATA_BYTES > IR_DATAGRAM_LEN
+#if BROADCAST_MESSAGE_DATA_BYTES > IR_DATAGRAM_LEN
 #error MESSAGE_DATA_BYTES must not be greater than DATAGRAM_BYTES.
 #endif
 
@@ -39,7 +40,7 @@ union MessageHeader {
 struct Message {
   MessageHeader header;
 
-  byte payload[MESSAGE_PAYLOAD_BYTES];
+  byte payload[BROADCAST_MESSAGE_PAYLOAD_BYTES];
 };
 
 namespace message {
