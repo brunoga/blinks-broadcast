@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "bits.h"
+#include "handler.h"
 #include "message.h"
 #include "message_tracker.h"
 
@@ -264,7 +265,10 @@ void Process() {
     // beforehand if sending would fail. If it would, we abort and do not
     // consume the message. If it would not or no messages would be sent, we
     // consume it.
-    if (message->header.is_reply) {
+    if (message::handler::Consume(message)) {
+      // Message was consumed by external handler.
+      message_consumed = true;
+    } else if (message->header.is_reply) {
       // Reply.
       message_consumed = handle_reply(face, message);
     } else {
@@ -274,6 +278,17 @@ void Process() {
 
     if (message_consumed) {
       markDatagramReadOnFace(face);
+    }
+  }
+
+  // We tried to process all incoming messages. Now check if there is any
+  // handler message availabe to propagate.
+  Message message;
+  if (message::handler::Propagate(&message)) {
+    // Yep, there is. Try to send one message.
+    if (Send(&message)) {
+      // Send was successfull. Mark message as propagated.
+      message::handler::Propagated();
     }
   }
 }
