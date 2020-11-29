@@ -22,6 +22,7 @@ namespace manager {
 
 static ReceiveMessageHandler rcv_message_handler_ = nullptr;
 static ForwardMessageHandler fwd_message_handler_ = nullptr;
+#ifndef BROADCAST_DISABLE_REPLIES
 static ReceiveReplyHandler rcv_reply_handler_ = nullptr;
 static ForwardReplyHandler fwd_reply_handler_ = nullptr;
 
@@ -61,6 +62,7 @@ static void maybe_fwd_reply_or_set_result(Message *message) {
     result_ = message;
   }
 }
+#endif
 
 static void broadcast_message(byte src_face, broadcast::Message *message) {
   // Broadcast message to all connected blinks (except the parent one).
@@ -92,6 +94,7 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     sendDatagramOnFace((const byte *)&fwd_message,
                        len + BROADCAST_MESSAGE_HEADER_BYTES, f);
 
+#ifndef BROADCAST_DISABLE_REPLIES
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
 
@@ -99,15 +102,19 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
       // actually saves us some storage space.
       parent_face_ = src_face;
     }
+#endif
   }
 
+#ifndef BROADCAST_DISABLE_REPLIES
   if (message->header.id == MESSAGE_RESET) {
     // This was a reset message. Clear relevant data.
     sent_faces_ = 0;
     parent_face_ = FACE_COUNT;
   }
+#endif
 }
 
+#ifndef BROADCAST_DISABLE_REPLIES
 static bool would_forward_reply_and_fail(byte face) {
   // Processing the message on this face would clear its sent_face_ bit.
   UNSET_BIT(sent_faces_, face);
@@ -126,6 +133,7 @@ static bool would_forward_reply_and_fail(byte face) {
   // No reply would be forwarded or it would not fail.
   return false;
 }
+#endif
 
 static bool would_broadcast_fail(byte src_face) {
   // Check if all faces we would broadcast to arer available.
@@ -150,6 +158,7 @@ static bool would_broadcast_fail(byte src_face) {
   return false;
 }
 
+#ifndef BROADCAST_DISABLE_REPLIES
 static bool handle_reply(byte face, Message *reply) {
   if (would_forward_reply_and_fail(face)) {
     // Do not even try processing this message.
@@ -166,6 +175,7 @@ static bool handle_reply(byte face, Message *reply) {
 
   return true;
 }
+#endif
 
 static bool maybe_broadcast(byte face, Message *message) {
   if (would_broadcast_fail(face)) {
@@ -190,6 +200,7 @@ static bool maybe_broadcast(byte face, Message *message) {
 
 static bool handle_message(byte face, Message *message) {
   if (message::tracker::Tracked(message->header)) {
+#ifndef BROADCAST_DISABLE_REPLIES
     if (!message->header.is_fire_and_forget) {
       if (IS_BIT_SET(sent_faces_, face)) {
         if (would_forward_reply_and_fail(face)) {
@@ -204,6 +215,7 @@ static bool handle_message(byte face, Message *message) {
         return sendDatagramOnFace(message, 1, face);
       }
     }
+#endif
 
     // Call receive message handler to process loop.
     if (rcv_message_handler_ != nullptr) {
@@ -213,13 +225,22 @@ static bool handle_message(byte face, Message *message) {
     if (!maybe_broadcast(face, message)) return false;
   }
 
+#ifndef BROADCAST_DISABLE_REPLIES
   if (!message->header.is_fire_and_forget) {
     maybe_fwd_reply_or_set_result(message);
   }
+#endif
 
   return true;
 }
 
+#ifdef BROADCAST_DISABLE_REPLIES
+void Setup(ReceiveMessageHandler rcv_message_handler,
+           ForwardMessageHandler fwd_message_handler) {
+  rcv_message_handler_ = rcv_message_handler;
+  fwd_message_handler_ = fwd_message_handler;
+}
+#else
 void Setup(ReceiveMessageHandler rcv_message_handler,
            ForwardMessageHandler fwd_message_handler,
            ReceiveReplyHandler rcv_reply_handler,
@@ -229,10 +250,13 @@ void Setup(ReceiveMessageHandler rcv_message_handler,
   rcv_reply_handler_ = rcv_reply_handler;
   fwd_reply_handler_ = fwd_reply_handler;
 }
+#endif
 
 void Process() {
+#ifndef BROADCAST_DISABLE_REPLIES
   // Results are only valid in the same loop iteration they were generated.
   result_ = nullptr;
+#endif
 
   // We might be dealing with multiple messages propagating here so we need to
   // try very hard to make progress in processing messages or things may stall
@@ -262,6 +286,7 @@ void Process() {
 
     bool message_consumed;
 
+#ifndef BROADCAST_DISABLE_REPLIES
     // Now we try to consume the message. We do this in the simplest way
     // possible by procerssing the message and if we reach a point where it
     // would result in messages being sent, we try to detect this and check
@@ -279,9 +304,12 @@ void Process() {
       // Reply.
       message_consumed = handle_reply(face, message);
     } else {
+#endif
       // Message.
       message_consumed = handle_message(face, message);
+#ifndef BROADCAST_DISABLE_REPLIES
     }
+#endif
 
     if (message_consumed) {
       markDatagramReadOnFace(face);
@@ -300,7 +328,7 @@ void Process() {
     }
   }
 #endif
-}
+}  // namespace manager
 
 bool Send(broadcast::Message *message) {
   // Setup tracking for this message.
@@ -309,6 +337,7 @@ bool Send(broadcast::Message *message) {
   return maybe_broadcast(FACE_COUNT, message);
 }
 
+#ifndef BROADCAST_DISABLE_REPLIES
 bool Receive(broadcast::Message *reply) {
   if (result_ == nullptr) return false;
 
@@ -320,6 +349,7 @@ bool Receive(broadcast::Message *reply) {
 }
 
 bool Processing() { return sent_faces_ != 0; }
+#endif
 
 }  // namespace manager
 

@@ -26,6 +26,16 @@
 
 namespace broadcast {
 
+#ifdef BROADCAST_DISABLE_REPLIES
+union MessageHeader {
+  struct {
+    byte sequence : 4;
+    byte id : 4;
+  };
+
+  byte as_byte;
+};
+#else
 union MessageHeader {
   struct {
     bool is_fire_and_forget : 1;
@@ -36,6 +46,7 @@ union MessageHeader {
 
   byte as_byte;
 };
+#endif
 
 struct Message {
   MessageHeader header;
@@ -45,7 +56,11 @@ struct Message {
 
 namespace message {
 
+#ifdef BROADCAST_DISABLE_REPLIES
+void Initialize(Message* message, byte id);
+#else
 void Initialize(Message* message, byte id, bool is_fire_and_forget);
+#endif
 
 void ClearPayload(Message* message);
 

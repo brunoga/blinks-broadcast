@@ -36,6 +36,7 @@ typedef void (*ReceiveMessageHandler)(byte message_id, byte src_face,
 typedef byte (*ForwardMessageHandler)(byte message_id, byte src_face,
                                       byte dst_face, byte *payload);
 
+#ifndef BROADCAST_DISABLE_REPLIES
 // Prototype for functions that want to take action on  a reply as soon as
 // it reaches a Blink. It is always called once per reply and as there are
 // possibly multiple replies arriving, payload is read-only. The message_id
@@ -56,13 +57,18 @@ typedef void (*ReceiveReplyHandler)(byte message_id, byte src_face,
 // smaller than MESSAGE_PAYLOAD_BYTES).
 typedef byte (*ForwardReplyHandler)(byte message_id, byte dst_face,
                                     byte *payload);
+#endif
 
 // Configures the message manager with the given handlers.
+#ifdef BROADCAST_DISABLE_REPLIES
+void Setup(ReceiveMessageHandler rcv_message_handler,
+           ForwardMessageHandler fwd_message_handler);
+#else
 void Setup(ReceiveMessageHandler rcv_message_handler,
            ForwardMessageHandler fwd_message_handler,
            ReceiveReplyHandler rcv_reply_handler,
            ForwardReplyHandler fwd_reply_handler);
-
+#endif
 // Processes all pending incoming and outgoing messages. This should be called
 // at the top of every loop() iteration.
 void Process();
@@ -72,6 +78,7 @@ void Process();
 // otherwise.
 bool Send(broadcast::Message *message);
 
+#ifndef BROADCAST_DISABLE_REPLIES
 // Tries to receive the result of a sent message. This will only ever return
 // true at the same Blink that sent the message. Returns true if a result was
 // available and false otherwise. Note that this will never return true for
@@ -82,6 +89,7 @@ bool Receive(broadcast::Message *result);
 // This can be used to prevent other messages being sent before we complete the
 // current work.
 bool Processing();
+#endif
 
 }  // namespace manager
 

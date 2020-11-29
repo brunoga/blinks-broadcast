@@ -28,7 +28,7 @@ bool Propagate(Message* message) {
   return false;
 }
 
-void Propagated() {
+void __attribute__((noinline)) Propagated() {
   if (handler_.propagated != nullptr) handler_.propagated();
 }
 
