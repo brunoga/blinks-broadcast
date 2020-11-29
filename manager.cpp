@@ -286,30 +286,40 @@ void Process() {
 
     bool message_consumed;
 
-#ifndef BROADCAST_DISABLE_REPLIES
     // Now we try to consume the message. We do this in the simplest way
     // possible by procerssing the message and if we reach a point where it
     // would result in messages being sent, we try to detect this and check
     // beforehand if sending would fail. If it would, we abort and do not
     // consume the message. If it would not or no messages would be sent, we
     // consume it.
+#ifndef BROADCAST_DISABLE_REPLIES
+
 #ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
     if (message::handler::Consume(message)) {
       // Message was consumed by external handler.
       message_consumed = true;
     } else if (message->header.is_reply) {
-#else
+#else   // BROADCAST_ENABLE_MESSAGE_HANDLER
     if (message->header.is_reply) {
-#endif
+#endif  // BROADCAST_ENABLE_MESSAGE_HANDLER
       // Reply.
       message_consumed = handle_reply(face, message);
     } else {
-#endif
-      // Message.
+#else  // BROADCAST_DISABLE_REPLIES
+
+#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
+    if (message::handler::Consume(message)) {
+      // Message was consumed by external handler.
+      message_consumed = true;
+    } else {
+#endif  // BROADCAST_ENABLE_MESSAGE_HANDLER
+#endif  // BROADCAST_DISABLE_REPLIES
       message_consumed = handle_message(face, message);
-#ifndef BROADCAST_DISABLE_REPLIES
+#if !defined(BROADCAST_DISABLE_REPLIES) || \
+    (defined(BROADCAST_DISABLE_REPLIES) && \
+     defined(BROADCAST_ENABLE_MESSAGE_HANDLER))
     }
-#endif
+#endif  // BROADCAST_DISABLE_REPLIES
 
     if (message_consumed) {
       markDatagramReadOnFace(face);
@@ -319,10 +329,10 @@ void Process() {
 #ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
   // We tried to process all incoming messages. Now check if there is any
   // handler message availabe to propagate.
-  Message message;
-  if (message::handler::Propagate(&message)) {
+  Message propagate_message;
+  if (message::handler::Propagate(&propagate_message)) {
     // Yep, there is. Try to send one message.
-    if (Send(&message)) {
+    if (Send(&propagate_message)) {
       // Send was successfull. Mark message as propagated.
       message::handler::Propagated();
     }

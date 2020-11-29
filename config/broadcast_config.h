@@ -6,10 +6,10 @@
 
 // Enable message handler support. Allows sending messages that can be
 // externally tracked.
-//#define BROADCAST_ENABLE_MESSAGE_HANDLER
+#define BROADCAST_ENABLE_MESSAGE_HANDLER
 
 // Disable message reply support. Saves a lot of storage space for programs that
 // only need fire and forget messages.
-//#define BROADCAST_DISABLE_REPLY
+//#define BROADCAST_DISABLE_REPLIES
 
 #endif
