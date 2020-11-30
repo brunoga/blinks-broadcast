@@ -8,28 +8,23 @@ Handler handler_;
 
 namespace handler {
 
-void Set(const Handler& handler) { handler_ = handler; }
+static bool maybe_call_handle(Message* message, byte mode) {
+  return (handler_.handle != nullptr) && handler_.handle(message, mode);
+}
+
+void Set(Handler handler) { handler_ = handler; }
 
 bool Consume(const Message* message) {
-  if ((handler_.consume != nullptr) &&
-      (message->header.id == handler_.message_id)) {
-    handler_.consume(message);
-    return true;
-  }
-
-  return false;
+  return (message->header.id == handler_.message_id) &&
+         maybe_call_handle((Message*)message, MESSAGE_HANDLER_MODE_CONSUME);
 }
 
 bool Propagate(Message* message) {
-  if (handler_.propagate != nullptr) {
-    return handler_.propagate(message);
-  }
-
-  return false;
+  return maybe_call_handle(message, MESSAGE_HANDLER_MODE_PROPAGATE);
 }
 
-void __attribute__((noinline)) Propagated() {
-  if (handler_.propagated != nullptr) handler_.propagated();
+void Propagated() {
+  maybe_call_handle(nullptr, MESSAGE_HANDLER_MODE_PROPAGATED);
 }
 
 }  // namespace handler
