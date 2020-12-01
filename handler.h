@@ -5,10 +5,6 @@
 
 #include "message.h"
 
-#define MESSAGE_HANDLER_MODE_CONSUME 0
-#define MESSAGE_HANDLER_MODE_PROPAGATE 1
-#define MESSAGE_HANDLER_MODE_PROPAGATED 2
-
 namespace broadcast {
 
 namespace message {
@@ -16,16 +12,14 @@ namespace message {
 struct Handler {
   byte message_id;
 
-  bool (*handle)(Message*, byte mode);
+  void (*consume)(const Message*, byte);
 };
 
 namespace handler {
 
 void Set(Handler handler);
 
-bool Consume(const Message* message);
-bool Propagate(Message* message);
-void Propagated();
+bool Consume(const Message* message, byte face);
 
 }  // namespace handler
 

@@ -177,7 +177,8 @@ static bool handle_reply(byte face, Message *reply) {
 }
 #endif
 
-static bool maybe_broadcast(byte face, Message *message) {
+static bool __attribute__((noinline))
+maybe_broadcast(byte face, Message *message) {
   if (would_broadcast_fail(face)) {
     // Do not try to process this message and broadcast it. Note that this might
     // prevent us from making progress and creating a deadlock but there is only
@@ -308,7 +309,7 @@ void Process() {
 #else  // BROADCAST_DISABLE_REPLIES
 
 #ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
-    if (message::handler::Consume(message)) {
+    if (message::handler::Consume(message, face)) {
       // Message was consumed by external handler.
       message_consumed = true;
     } else {
@@ -325,20 +326,7 @@ void Process() {
       markDatagramReadOnFace(face);
     }
   }
-
-#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
-  // We tried to process all incoming messages. Now check if there is any
-  // handler message availabe to propagate.
-  Message propagate_message;
-  if (message::handler::Propagate(&propagate_message)) {
-    // Yep, there is. Try to send one message.
-    if (Send(&propagate_message)) {
-      // Send was successfull. Mark message as propagated.
-      message::handler::Propagated();
-    }
-  }
-#endif
-}  // namespace manager
+}
 
 bool Send(broadcast::Message *message) {
   // Setup tracking for this message.
