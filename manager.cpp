@@ -296,7 +296,7 @@ void Process() {
 #ifndef BROADCAST_DISABLE_REPLIES
 
 #ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
-    if (message::handler::Consume(message)) {
+    if (message::handler::Consume(message, face)) {
       // Message was consumed by external handler.
       message_consumed = true;
     } else if (message->header.is_reply) {
