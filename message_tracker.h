@@ -11,7 +11,7 @@ namespace tracker {
 
 void Track(broadcast::MessageHeader header);
 bool Tracked(broadcast::MessageHeader header);
-byte LastSequence();
+byte NextSequence();
 
 }  // namespace tracker
 

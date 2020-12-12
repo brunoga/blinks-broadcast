@@ -24,6 +24,8 @@
 // Message id 0 is used for fire and forget reset messages.
 #define MESSAGE_RESET 0
 
+#define MESSAGE_MAX_SEQUENCE 15
+
 namespace broadcast {
 
 #ifdef BROADCAST_DISABLE_REPLIES

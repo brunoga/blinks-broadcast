@@ -12,7 +12,7 @@ namespace tracker {
 static MessageHeader tracked_message_header_[MESSAGE_TRACKER_NUM_TRACKED];
 static byte tracked_message_header_index_;
 
-static byte last_sequence_ = 7;
+static byte last_sequence_;
 
 void __attribute__((noinline)) Track(broadcast::MessageHeader header) {
   tracked_message_header_[tracked_message_header_index_] = header;
@@ -32,7 +32,12 @@ bool __attribute__((noinline)) Tracked(broadcast::MessageHeader header) {
   return false;
 }
 
-byte LastSequence() { return last_sequence_; }
+byte NextSequence() {
+  last_sequence_ =
+      (last_sequence_ == MESSAGE_MAX_SEQUENCE) ? 0 : last_sequence_ + 1;
+
+  return last_sequence_;
+}
 
 }  // namespace tracker
 

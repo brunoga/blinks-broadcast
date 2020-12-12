@@ -330,7 +330,7 @@ void Process() {
 
 bool Send(broadcast::Message *message) {
   // Setup tracking for this message.
-  message->header.sequence = message::tracker::LastSequence() + 1;
+  message->header.sequence = message::tracker::NextSequence();
 
   return maybe_broadcast(FACE_COUNT, message);
 }
