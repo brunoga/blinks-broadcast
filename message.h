@@ -31,8 +31,8 @@ namespace broadcast {
 #ifdef BROADCAST_DISABLE_REPLIES
 union MessageHeader {
   struct {
-    byte sequence : 4;
     byte id : 4;
+    byte sequence : 4;
   };
 
   byte as_byte;
@@ -40,10 +40,10 @@ union MessageHeader {
 #else
 union MessageHeader {
   struct {
-    bool is_fire_and_forget : 1;
-    bool is_reply : 1;
-    byte sequence : 3;
     byte id : 3;
+    byte sequence : 3;
+    bool is_reply : 1;
+    bool is_fire_and_forget : 1;
   };
 
   byte as_byte;
