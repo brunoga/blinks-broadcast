@@ -89,7 +89,15 @@ bool Receive(broadcast::Message *result);
 // This can be used to prevent other messages being sent before we complete the
 // current work.
 bool Processing();
-#endif
+#endif  // BROADCAST_DISABLE_REPLIES
+
+#ifdef BROADCAST_TRACK_FACE_CONNECTION_STATE
+// Returns true if the given face was just connected.
+bool FaceConnected(byte face);
+
+// Returns true if the given face was just disconnected.
+bool FaceDisconnected(byte face);
+#endif  // BROADCAST_TRACK_FACE_CONNECTION_STATE
 
 }  // namespace manager
 

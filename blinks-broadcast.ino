@@ -131,6 +131,20 @@ byte count = 0;
 void loop() {
   broadcast::manager::Process();
 
+#ifdef BROADCAST_TRACK_FACE_CONNECTION_STATE
+  FOREACH_FACE(face) {
+    if (broadcast::manager::FaceConnected(face)) {
+      LOGF("Face ");
+      LOG(face);
+      LOGFLN(" connected.");
+    } else if (broadcast::manager::FaceDisconnected(face)) {
+      LOGF("Face ");
+      LOG(face);
+      LOGFLN(" disconnected.");
+    }
+  }
+#endif  // BROADCAST_TRACK_FACE_CONNECTION_STATE
+
   if (buttonSingleClicked()) {
     step = 1;
     count = 1;
