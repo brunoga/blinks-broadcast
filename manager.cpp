@@ -20,14 +20,8 @@ namespace broadcast {
 
 namespace manager {
 
-#ifdef BROADCAST_TRACK_FACE_CONNECTION_STATE
-static byte previously_connected_faces_;
-static byte currently_connected_faces_;
-#endif  // BROADCAST_TRACK_FACE_CONNECTION_STATE
-
 static ReceiveMessageHandler rcv_message_handler_ = nullptr;
 static ForwardMessageHandler fwd_message_handler_ = nullptr;
-
 #ifndef BROADCAST_DISABLE_REPLIES
 static ReceiveReplyHandler rcv_reply_handler_ = nullptr;
 static ForwardReplyHandler fwd_reply_handler_ = nullptr;
@@ -68,7 +62,7 @@ static void maybe_fwd_reply_or_set_result(Message *message) {
     result_ = message;
   }
 }
-#endif  // BROADCAST_DISABLE_REPLIES
+#endif
 
 static void broadcast_message(byte src_face, broadcast::Message *message) {
   // Broadcast message to all connected blinks (except the parent one).
@@ -265,13 +259,6 @@ void Process() {
   result_ = nullptr;
 #endif
 
-#ifdef BROADCAST_TRACK_FACE_CONNECTION_STATE
-  // Cache the previously connected faces and zero-out the currently connected
-  // ones.
-  previously_connected_faces_ = currently_connected_faces_;
-  currently_connected_faces_ = 0;
-#endif  // BROADCAST_TRACK_FACE_CONNECTION_STATE
-
   // We might be dealing with multiple messages propagating here so we need to
   // try very hard to make progress in processing messages or things may stall
   // (as we always try to wait on all local message to be sent before trying
@@ -285,12 +272,6 @@ void Process() {
   // Ideally we would have enought memory for a message queue, but we do not
   // have this luxury.
   FOREACH_FACE(face) {
-#ifdef BROADCAST_TRACK_FACE_CONNECTION_STATE
-    if (!isValueReceivedOnFaceExpired(face)) {
-      currently_connected_faces_ |= 1 << face;
-    }
-#endif  // BROADCAST_TRACK_FACE_CONNECTION_STATE
-
     if (getDatagramLengthOnFace(face) == 0) {
       // No datagram waiting on this face. Move to the next one.
       continue;
@@ -367,20 +348,6 @@ bool Receive(broadcast::Message *reply) {
 
 bool Processing() { return sent_faces_ != 0; }
 #endif
-
-#ifdef BROADCAST_TRACK_FACE_CONNECTION_STATE
-bool FaceConnected(byte face) {
-  // Face was not connected before and is connected now.
-  return ((previously_connected_faces_ & (1 << face)) == 0) &&
-         ((currently_connected_faces_ & (1 << face)) != 0);
-}
-
-bool FaceDisconnected(byte face) {
-  // Face was connected before and is not connected now.
-  return ((previously_connected_faces_ & (1 << face)) != 0) &&
-         ((currently_connected_faces_ & (1 << face)) == 0);
-}
-#endif  // BROADCAST_TRACK_FACE_CONNECTION_STATE
 
 }  // namespace manager
 

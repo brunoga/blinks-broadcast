@@ -12,7 +12,4 @@
 // only need fire and forget messages.
 //#define BROADCAST_DISABLE_REPLIES
 
-// Enable tracking face connection/disconnection events.
-//#define BROADCAST_TRACK_FACE_CONNECTION_STATE
-
 #endif
