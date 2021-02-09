@@ -67,6 +67,12 @@ static void maybe_fwd_reply_or_set_result(Message *message) {
 static void broadcast_message(byte src_face, broadcast::Message *message) {
   // Broadcast message to all connected blinks (except the parent one).
 
+  if (!message->header.is_fire_and_forget) {
+    // We do not need to set parent_face_ on every loop iteration, but this
+    // actually saves us some storage space.
+    parent_face_ = src_face;
+  }
+
   FOREACH_FACE(f) {
     if (isValueReceivedOnFaceExpired(f)) {
       // No one seem to be connected to this face. Not necessarily true but
@@ -97,10 +103,6 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
 #ifndef BROADCAST_DISABLE_REPLIES
     if (!message->header.is_fire_and_forget) {
       SET_BIT(sent_faces_, f);
-
-      // We do not need to set parent_face_ on every loop iteration, but this
-      // actually saves us some storage space.
-      parent_face_ = src_face;
     }
 #endif
   }
