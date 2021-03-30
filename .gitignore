@@ -32,4 +32,6 @@
 *.app
 
 # VScode config files
-.vscode
+.vscode/*
+!.vscode/arduino.json
+output
