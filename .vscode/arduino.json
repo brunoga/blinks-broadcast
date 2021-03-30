@@ -1,0 +1,6 @@
+{
+    "board": "blinklib:avr:blink",
+    "sketch": "blinks-broadcast.ino",
+    "port": "/dev/ttyUSB0",
+    "output": "output"
+}
