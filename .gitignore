@@ -34,4 +34,3 @@
 # VScode config files
 .vscode/*
 !.vscode/arduino.json
-output
