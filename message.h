@@ -5,9 +5,11 @@
 
 #if __has_include(<broadcast_config.h>)
 #include <broadcast_config.h>
-#else
-// Default message payload size is the maximum size.
-#define BROADCAST_MESSAGE_PAYLOAD_BYTES 15
+#endif
+
+#ifndef BROADCAST_MESSAGE_PAYLOAD_BYTES
+// Default maximum payload bytes is the maximum datagram length - 1.
+#define BROADCAST_MESSAGE_PAYLOAD_BYTES IR_DATAGRAM_LEN - 1
 #endif
 
 // This should not be changed.

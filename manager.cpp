@@ -16,20 +16,71 @@
     "This code requires a custom blinklib. See https://github.com/brunoga/blinklib/releases/latest"
 #endif
 
+#if __has_include(<broadcast_config.h>)
+#include <broadcast_config.h>
+#endif
+
+// Set default for all handlers in case they are not set.
+#ifndef BROADCAST_RCV_MESSAGE_HANDLER
+#define BROADCAST_RCV_MESSAGE_HANDLER default_rcv_message_handler
+#endif
+#ifndef BROADCAST_FWD_MESSAGE_HANDLER
+#define BROADCAST_FWD_MESSAGE_HANDLER default_fwd_message_handler
+#endif
+#ifndef BROADCAST_RCV_REPLY_HANDLER
+#define BROADCAST_RCV_REPLY_HANDLER default_rcv_reply_handler
+#endif
+#ifndef BROADCAST_FWD_REPLY_HANDLER
+#define BROADCAST_FWD_REPLY_HANDLER default_fwd_reply_handler
+#endif
+
 namespace broadcast {
 
 namespace manager {
 
-static ReceiveMessageHandler rcv_message_handler_ = nullptr;
-static ForwardMessageHandler fwd_message_handler_ = nullptr;
 #ifndef BROADCAST_DISABLE_REPLIES
-static ReceiveReplyHandler rcv_reply_handler_ = nullptr;
-static ForwardReplyHandler fwd_reply_handler_ = nullptr;
-
 static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_;
 
 static Message *result_;
+
+static void __attribute__((unused))
+default_rcv_message_handler(byte message_id, byte src_face, byte *payload,
+                            bool loop) {
+  // Default receive message handler does nothing.
+  (void)message_id;
+  (void)src_face;
+  (void)payload;
+  (void)loop;
+}
+
+static byte __attribute__((unused))
+default_fwd_message_handler(byte message_id, byte src_face, byte dst_face,
+                            byte *payload) {
+  // Default forward message handler simply returns the configured payload size.
+  (void)message_id;
+  (void)src_face;
+  (void)dst_face;
+  (void)payload;
+  return BROADCAST_MESSAGE_PAYLOAD_BYTES;
+}
+
+static void __attribute__((unused))
+default_rcv_reply_handler(byte message_id, byte src_face, const byte *payload) {
+  // Default receive reply handler does nothing.
+  (void)message_id;
+  (void)src_face;
+  (void)payload;
+}
+
+static byte __attribute__((unused))
+default_fwd_reply_handler(byte message_id, byte dst_face, byte *payload) {
+  // Default forward reply handler simply returns the configured payload size.
+  (void)message_id;
+  (void)dst_face;
+  (void)payload;
+  return BROADCAST_MESSAGE_PAYLOAD_BYTES;
+}
 
 // Return true if we generated a result (as opposed to not doing anything or
 // forwarding a reply back to the parent).
@@ -39,11 +90,8 @@ static void maybe_fwd_reply_or_set_result(Message *message) {
   message->header.is_reply = true;
   message::ClearPayload(message);
 
-  byte len = BROADCAST_MESSAGE_PAYLOAD_BYTES;
-  if (fwd_reply_handler_ != nullptr) {
-    len =
-        fwd_reply_handler_(message->header.id, parent_face_, message->payload);
-  }
+  byte len = BROADCAST_FWD_REPLY_HANDLER(message->header.id, parent_face_,
+                                         message->payload);
 
   if (parent_face_ != FACE_COUNT) {
     // This was the last face we were waiting on and we have a parent.
@@ -92,11 +140,8 @@ static void broadcast_message(byte src_face, broadcast::Message *message) {
     broadcast::Message fwd_message;
     memcpy(&fwd_message, message, BROADCAST_MESSAGE_DATA_BYTES);
 
-    byte len = BROADCAST_MESSAGE_PAYLOAD_BYTES;
-    if (fwd_message_handler_ != nullptr) {
-      len = fwd_message_handler_(fwd_message.header.id, src_face, f,
-                                 fwd_message.payload);
-    };
+    byte len = BROADCAST_FWD_MESSAGE_HANDLER(fwd_message.header.id, src_face, f,
+                                             fwd_message.payload);
 
     // Should never fail.
     sendDatagramOnFace((const byte *)&fwd_message,
@@ -171,9 +216,7 @@ static bool handle_reply(byte face, Message *reply) {
 
   // Note the call above already cleared the sent_faces_ bit for face.
 
-  if (rcv_reply_handler_ != nullptr) {
-    rcv_reply_handler_(reply->header.id, face, reply->payload);
-  }
+  BROADCAST_RCV_REPLY_HANDLER(reply->header.id, face, reply->payload);
 
   maybe_fwd_reply_or_set_result(reply);
 
@@ -193,8 +236,9 @@ maybe_broadcast(byte face, Message *message) {
   // We are clear to go. Track message.
   message::tracker::Track(message->header);
 
-  if (face != FACE_COUNT && rcv_message_handler_ != nullptr) {
-    rcv_message_handler_(message->header.id, face, message->payload, false);
+  if (face != FACE_COUNT) {
+    BROADCAST_RCV_MESSAGE_HANDLER(message->header.id, face, message->payload,
+                                  false);
   }
 
   // Broadcast message.
@@ -223,9 +267,7 @@ static bool handle_message(byte face, Message *message) {
 #endif
 
     // Call receive message handler to process loop.
-    if (rcv_message_handler_ != nullptr) {
-      rcv_message_handler_(message->header.id, face, nullptr, true);
-    }
+    BROADCAST_RCV_MESSAGE_HANDLER(message->header.id, face, nullptr, true);
   } else {
     if (!maybe_broadcast(face, message)) return false;
   }
@@ -238,24 +280,6 @@ static bool handle_message(byte face, Message *message) {
 
   return true;
 }
-
-#ifdef BROADCAST_DISABLE_REPLIES
-void Setup(ReceiveMessageHandler rcv_message_handler,
-           ForwardMessageHandler fwd_message_handler) {
-  rcv_message_handler_ = rcv_message_handler;
-  fwd_message_handler_ = fwd_message_handler;
-}
-#else
-void Setup(ReceiveMessageHandler rcv_message_handler,
-           ForwardMessageHandler fwd_message_handler,
-           ReceiveReplyHandler rcv_reply_handler,
-           ForwardReplyHandler fwd_reply_handler) {
-  rcv_message_handler_ = rcv_message_handler;
-  fwd_message_handler_ = fwd_message_handler;
-  rcv_reply_handler_ = rcv_reply_handler;
-  fwd_reply_handler_ = fwd_reply_handler;
-}
-#endif
 
 void Process() {
 #ifndef BROADCAST_DISABLE_REPLIES
