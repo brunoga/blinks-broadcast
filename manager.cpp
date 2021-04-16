@@ -7,10 +7,6 @@
 #include "message.h"
 #include "message_tracker.h"
 
-#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
-#include "handler.h"
-#endif
-
 #ifndef BGA_CUSTOM_BLINKLIB
 #error \
     "This code requires a custom blinklib. See https://github.com/brunoga/blinklib/releases/latest"
@@ -21,6 +17,9 @@
 #endif
 
 // Set default for all handlers in case they are not set.
+#ifndef BROADCAST_EXTERNAL_MESSAGE_HANDLER
+#define BROADCAST_EXTERNAL_MESSAGE_HANDLER default_external_message_handler
+#endif
 #ifndef BROADCAST_RCV_MESSAGE_HANDLER
 #define BROADCAST_RCV_MESSAGE_HANDLER default_rcv_message_handler
 #endif
@@ -43,6 +42,15 @@ static byte parent_face_ = FACE_COUNT;
 static byte sent_faces_;
 
 static Message *result_;
+
+static bool __attribute__((unused))
+default_external_message_handler(byte face, const Message *message) {
+  // Default external message handler simply returns false to indicate it did
+  // not process the message.
+  (void)face;
+  (void)message;
+  return false;
+}
 
 static void __attribute__((unused))
 default_rcv_message_handler(byte message_id, byte src_face, byte *payload,
@@ -313,7 +321,7 @@ void Process() {
     // be big enough so no illegal memory access should happen.
     broadcast::Message *message = (broadcast::Message *)getDatagramOnFace(face);
 
-    bool message_consumed;
+    bool message_consumed = false;
 
     // Now we try to consume the message. We do this in the simplest way
     // possible by procerssing the message and if we reach a point where it
@@ -322,31 +330,15 @@ void Process() {
     // consume the message. If it would not or no messages would be sent, we
     // consume it.
 #ifndef BROADCAST_DISABLE_REPLIES
-
-#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
-    if (message::handler::Consume(message, face)) {
-      // Message was consumed by external handler.
-      message_consumed = true;
-    } else if (message->header.is_reply) {
-#else   // BROADCAST_ENABLE_MESSAGE_HANDLER
     if (message->header.is_reply) {
-#endif  // BROADCAST_ENABLE_MESSAGE_HANDLER
-      // Reply.
       message_consumed = handle_reply(face, message);
     } else {
-#else  // BROADCAST_DISABLE_REPLIES
-
-#ifdef BROADCAST_ENABLE_MESSAGE_HANDLER
-    if (message::handler::Consume(message, face)) {
-      // Message was consumed by external handler.
-      message_consumed = true;
-    } else {
-#endif  // BROADCAST_ENABLE_MESSAGE_HANDLER
 #endif  // BROADCAST_DISABLE_REPLIES
-      message_consumed = handle_message(face, message);
-#if !defined(BROADCAST_DISABLE_REPLIES) || \
-    (defined(BROADCAST_DISABLE_REPLIES) && \
-     defined(BROADCAST_ENABLE_MESSAGE_HANDLER))
+      message_consumed = BROADCAST_EXTERNAL_MESSAGE_HANDLER(face, message);
+      if (!message_consumed) {
+        message_consumed = handle_message(face, message);
+      }
+#ifndef BROADCAST_DISABLE_REPLIES
     }
 #endif  // BROADCAST_DISABLE_REPLIES
 

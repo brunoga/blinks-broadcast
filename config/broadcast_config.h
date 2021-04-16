@@ -16,6 +16,16 @@
 
 // Define message handlers.
 
+// Prototype for functions that want to handle external messages. These are
+// messages that are not tracked or directly processed by the broadcast message
+// handler (they will be processed by the external message handler).
+// Implementations should return true if the message was processed by it and
+// false otherwise.
+//
+// bool external_message_handler(byte face, const Message* message);
+//
+// #define BROADCAST_EXTERNAL_MESSAGE_HANDLER external_message_handler
+
 // Prototype for functions that want to change the payload of a message as soon
 // as it reaches a Blink. It is always called once per message that arrives and
 // any changes in the payload will be seen by upstream Blinks (unless modified
