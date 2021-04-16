@@ -37,12 +37,6 @@ namespace broadcast {
 
 namespace manager {
 
-#ifndef BROADCAST_DISABLE_REPLIES
-static byte parent_face_ = FACE_COUNT;
-static byte sent_faces_;
-
-static Message *result_;
-
 static bool __attribute__((unused))
 default_external_message_handler(byte face, const Message *message) {
   // Default external message handler simply returns false to indicate it did
@@ -89,6 +83,12 @@ default_fwd_reply_handler(byte message_id, byte dst_face, byte *payload) {
   (void)payload;
   return BROADCAST_MESSAGE_PAYLOAD_BYTES;
 }
+
+#ifndef BROADCAST_DISABLE_REPLIES
+static byte parent_face_ = FACE_COUNT;
+static byte sent_faces_;
+
+static Message *result_;
 
 // Return true if we generated a result (as opposed to not doing anything or
 // forwarding a reply back to the parent).
