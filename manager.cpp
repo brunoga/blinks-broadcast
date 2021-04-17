@@ -348,7 +348,7 @@ void Process() {
   }
 }
 
-bool Send(broadcast::Message *message) {
+bool __attribute__((noinline)) Send(broadcast::Message *message) {
   // Setup tracking for this message.
   message->header.sequence = message::tracker::NextSequence();
 
